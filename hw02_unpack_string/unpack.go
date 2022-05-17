@@ -30,7 +30,10 @@ func Unpack(str string) (string, error) {
 		}
 
 		previousSymbol := symbols[len(symbols)-1]
-		intVal, _ := strconv.Atoi(string(r))
+		intVal, err := strconv.Atoi(string(r))
+		if err != nil {
+			return "", err
+		}
 
 		symbols[len(symbols)-1] = strings.Repeat(previousSymbol, intVal)
 	}
