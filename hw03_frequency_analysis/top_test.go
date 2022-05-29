@@ -7,7 +7,7 @@ import (
 )
 
 // Change to true if needed.
-var taskWithAsteriskIsCompleted = false
+var taskWithAsteriskIsCompleted = true
 
 var text = `Как видите, он  спускается  по  лестнице  вслед  за  своим
 	другом   Кристофером   Робином,   головой   вниз,  пересчитывая
@@ -78,5 +78,39 @@ func TestTop10(t *testing.T) {
 			}
 			require.Equal(t, expected, Top10(text))
 		}
+	})
+
+	t.Run("single word", func(t *testing.T) {
+		require.Equal(t, []string{"aaa"}, Top10("aaa"))
+	})
+
+	t.Run("repeating word", func(t *testing.T) {
+		require.Equal(t, []string{"aaa"}, Top10("aaa aaa aaa"))
+	})
+
+	t.Run("two words repeating similarly in wrong lexicographical order", func(t *testing.T) {
+		require.Equal(t, []string{"a", "b"}, Top10("b a"))
+	})
+
+	t.Run("two words repeating not similarly in wrong lexicographical order", func(t *testing.T) {
+		require.Equal(t, []string{"a", "b"}, Top10("b a a"))
+	})
+
+	t.Run("text with new line character", func(t *testing.T) {
+		require.Equal(t, []string{"a", "b"}, Top10("b a\na"))
+	})
+
+	t.Run("text with wrong lexicographic order and similarly repeating characters", func(t *testing.T) {
+		text := " m l k j i h g f e d c b a "
+		expected := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
+		require.Equal(t, expected, Top10(text))
+	})
+
+	t.Run("text with lowercase and uppercase", func(t *testing.T) {
+		require.Equal(t, []string{"test"}, Top10("TEST test"))
+	})
+
+	t.Run("text with words with punctuation marks", func(t *testing.T) {
+		require.Equal(t, []string{"test"}, Top10("test, test"))
 	})
 }
