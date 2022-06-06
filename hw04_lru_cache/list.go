@@ -6,6 +6,7 @@ type List interface {
 	Back() *ListItem
 	PushFront(v interface{}) *ListItem
 	PushBack(v interface{}) *ListItem
+	Get(v interface{}) *ListItem
 	Remove(i *ListItem)
 	MoveToFront(i *ListItem)
 }

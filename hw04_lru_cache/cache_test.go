@@ -1,12 +1,20 @@
 package hw04lrucache
 
 import (
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"strconv"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	keyA Key = "aaa"
+	keyB Key = "bbb"
+	keyC Key = "ccc"
+	keyD Key = "ddd"
 )
 
 func TestCache(t *testing.T) {
@@ -50,13 +58,34 @@ func TestCache(t *testing.T) {
 	})
 
 	t.Run("purge logic", func(t *testing.T) {
-		// Write me
+		t.Run("purge first element", func(t *testing.T) {
+			c := initCache(t)
+
+			was := c.Set(keyD, 4)
+			assert.False(t, was)
+
+			a, ok := c.Get(keyA)
+			assert.False(t, ok)
+			assert.Nil(t, a)
+		})
+
+		t.Run("purge less used element", func(t *testing.T) {
+			c := initCache(t)
+
+			_ = c.Set(keyA, 4)
+			_, _ = c.Get(keyC)
+
+			was := c.Set(keyD, 4)
+			assert.False(t, was)
+
+			b, ok := c.Get(keyB)
+			assert.False(t, ok)
+			assert.Nil(t, b)
+		})
 	})
 }
 
 func TestCacheMultithreading(t *testing.T) {
-	t.Skip() // Remove me if task with asterisk completed.
-
 	c := NewCache(10)
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
@@ -76,4 +105,17 @@ func TestCacheMultithreading(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+func initCache(t *testing.T) Cache {
+	t.Helper()
+
+	c := NewCache(3)
+
+	for i, key := range [...]Key{keyA, keyB, keyC} {
+		was := c.Set(key, i)
+		assert.False(t, was)
+	}
+
+	return c
 }
