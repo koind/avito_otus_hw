@@ -22,7 +22,7 @@ type cacheItem struct {
 	value interface{}
 }
 
-// Creates a new cache item
+// Creates a new cache item.
 func newCacheItem(key Key, value interface{}) *cacheItem {
 	return &cacheItem{
 		key:   key,
@@ -30,7 +30,7 @@ func newCacheItem(key Key, value interface{}) *cacheItem {
 	}
 }
 
-// Creates a new cache
+// Creates a new cache.
 func NewCache(capacity int) Cache {
 	return &lruCache{
 		capacity: capacity,
@@ -39,7 +39,7 @@ func NewCache(capacity int) Cache {
 	}
 }
 
-// Sets a new value by key
+// Sets a new value by key.
 func (c *lruCache) Set(key Key, value interface{}) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -71,7 +71,7 @@ func (c *lruCache) Set(key Key, value interface{}) bool {
 	return false
 }
 
-// Returns the set value by key
+// Returns the set value by key.
 func (c *lruCache) Get(key Key) (interface{}, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -86,7 +86,7 @@ func (c *lruCache) Get(key Key) (interface{}, bool) {
 	return val.value, true
 }
 
-// Clears the cache
+// Clears the cache.
 func (c *lruCache) Clear() {
 	c.items = make(map[Key]*cacheItem)
 	c.queue = NewList()

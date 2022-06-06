@@ -25,19 +25,19 @@ type list struct {
 	last  *ListItem
 }
 
-// Creates a new list
+// Creates a new list.
 func NewList() List {
 	return &list{
 		items: make(map[value]*ListItem),
 	}
 }
 
-// Returns the number of elements in the list
+// Returns the number of elements in the list.
 func (l *list) Len() int {
 	return len(l.items)
 }
 
-// Returns an element by value
+// Returns an element by value.
 func (l *list) Get(v interface{}) *ListItem {
 	val, ok := v.(value)
 	if !ok {
@@ -52,17 +52,17 @@ func (l *list) Get(v interface{}) *ListItem {
 	return i
 }
 
-// Returns the first element of the list
+// Returns the first element of the list.
 func (l *list) Front() *ListItem {
 	return l.first
 }
 
-// Returns the last element of the list
+// Returns the last element of the list.
 func (l *list) Back() *ListItem {
 	return l.last
 }
 
-// Adds a new element to the beginning of the list
+// Adds a new element to the beginning of the list.
 func (l *list) PushFront(v interface{}) *ListItem {
 	if v == nil {
 		return nil
@@ -85,7 +85,7 @@ func (l *list) PushFront(v interface{}) *ListItem {
 	return i
 }
 
-// Adds a new element to the end of the list
+// Adds a new element to the end of the list.
 func (l *list) PushBack(v interface{}) *ListItem {
 	if v == nil {
 		return nil
@@ -109,7 +109,7 @@ func (l *list) PushBack(v interface{}) *ListItem {
 	return i
 }
 
-// Removes an element from the list
+// Removes an element from the list.
 func (l *list) Remove(i *ListItem) {
 	if i == nil {
 		return
@@ -133,7 +133,7 @@ func (l *list) Remove(i *ListItem) {
 	i.Prev.Next = i.Next
 }
 
-// Moves the element to the beginningы
+// Moves the element to the beginning.
 func (l *list) MoveToFront(i *ListItem) {
 	if i == nil {
 		return
