@@ -15,6 +15,32 @@ func TestList(t *testing.T) {
 		require.Nil(t, l.Back())
 	})
 
+	t.Run("negative test: operations with empty item", func(t *testing.T) {
+		l := NewList()
+
+		l.Remove(nil)
+		require.Equal(t, 0, l.Len())
+
+		l.MoveToFront(nil)
+		require.Equal(t, 0, l.Len())
+
+		l.PushBack(nil)
+		require.Equal(t, 0, l.Len())
+
+		l.PushFront(nil)
+		require.Equal(t, 0, l.Len())
+	})
+
+	t.Run("negative test: operations with empty list", func(t *testing.T) {
+		var l *list
+
+		require.Panics(t, func() { l.Len() })
+		require.Panics(t, func() { l.Front() })
+		require.Panics(t, func() { l.Back() })
+		require.Panics(t, func() { l.PushFront(10) })
+		require.Panics(t, func() { l.PushBack(10) })
+	})
+
 	t.Run("complex", func(t *testing.T) {
 		l := NewList()
 
