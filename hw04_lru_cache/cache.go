@@ -88,6 +88,9 @@ func (c *lruCache) Get(key Key) (interface{}, bool) {
 
 // Clears the cache.
 func (c *lruCache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.items = make(map[Key]*cacheItem)
 	c.queue = NewList()
 }
