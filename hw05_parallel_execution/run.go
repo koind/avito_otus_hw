@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 )
 
 var ErrErrorsLimitExceeded = errors.New("errors limit exceeded")
@@ -32,7 +31,8 @@ func Run(tasks []Task, workersCount, maxErrorsCount int) error {
 	defer cancel()
 
 	var wg sync.WaitGroup
-	var errCount int32
+	var mutex sync.RWMutex
+	var errCount int
 	var mainErr error
 
 	for i := 0; i < workersCount; i++ {
@@ -50,15 +50,20 @@ func Run(tasks []Task, workersCount, maxErrorsCount int) error {
 						return
 					}
 
-					if atomic.LoadInt32(&errCount) > int32(maxErrorsCount) {
+					mutex.RLock()
+					if errCount > maxErrorsCount {
 						cancel()
 						mainErr = ErrErrorsLimitExceeded
+						mutex.RUnlock()
 						return
 					}
+					mutex.RUnlock()
 
 					err := task()
 					if err != nil {
-						atomic.AddInt32(&errCount, 1)
+						mutex.Lock()
+						errCount++
+						mutex.Unlock()
 					}
 				}
 			}
