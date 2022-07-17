@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -15,7 +14,7 @@ func TestCopy(t *testing.T) {
 	})
 
 	t.Run("Test exceeded offset", func(t *testing.T) {
-		tempFile, err := ioutil.TempFile(".", "out_")
+		tempFile, err := os.CreateTemp(".", "out_")
 		if err != nil {
 			t.FailNow()
 		}

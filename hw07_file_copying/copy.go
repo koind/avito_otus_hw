@@ -39,7 +39,10 @@ func Copy(fromPath string, toPath string, offset, limit int64) error {
 	}
 	defer toFile.Close()
 
-	_, _ = fromFile.Seek(offset, io.SeekStart)
+	_, err = fromFile.Seek(offset, io.SeekStart)
+	if err != nil {
+		return err
+	}
 
 	if limit == 0 || fileFromStat.Size()-offset < limit {
 		limit = fileFromStat.Size() - offset
