@@ -112,9 +112,9 @@ func validateRule(rawRule string, varValue interface{}) error {
 			return ErrValidationMaximum
 		}
 	case "in":
-		inStr := strings.Split(val, ",")
+		inString := strings.Split(val, ",")
 
-		if !contains(inStr, fmt.Sprintf("%v", varValue)) {
+		if !contains(inString, fmt.Sprintf("%v", varValue)) {
 			return ErrValidationContains
 		}
 	case "regexp":
