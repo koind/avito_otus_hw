@@ -56,24 +56,15 @@ func Validate(v interface{}) error {
 
 		if e.Field(i).Kind() == reflect.Slice {
 			for _, sliceVal := range varValue.([]string) {
-				err := validateValue(varTag, sliceVal)
-				if err != nil {
-					if !isValidationError(&err) {
-						return err
-					}
+				if err := validateValue(varTag, sliceVal); err != nil {
 					vErrors = append(vErrors, ValidationError{Field: varName, Err: err})
 				}
 			}
 		} else {
-			err := validateValue(varTag, varValue)
-			if err != nil {
-				if !isValidationError(&err) {
-					return err
-				}
+			if err := validateValue(varTag, varValue); err != nil {
 				vErrors = append(vErrors, ValidationError{Field: varName, Err: err})
 			}
 		}
-
 	}
 
 	if len(vErrors) > 0 {
@@ -83,81 +74,58 @@ func Validate(v interface{}) error {
 	return nil
 }
 
-func isValidationError(err *error) bool {
-	if errors.Is(*err, ErrValidationLength) ||
-		errors.Is(*err, ErrValidationMinimum) ||
-		errors.Is(*err, ErrValidationMaximum) ||
-		errors.Is(*err, ErrValidationContains) ||
-		errors.Is(*err, ErrNotStruct) ||
-		errors.Is(*err, ErrNoRule) ||
-		errors.Is(*err, ErrValidationRegexp) {
-		return true
-	}
-
-	return false
-}
-
 func validateValue(varTag reflect.StructTag, varValue interface{}) error {
 	if varTagVal := varTag.Get("validate"); varTagVal != "" {
 		valRules := strings.Split(varTagVal, "|")
 
 		for _, rawRule := range valRules {
-			valRule := strings.Split(rawRule, ":")
-
-			if len(valRule) != 2 {
-				return ErrNoRule
-			}
-
-			rule := valRule[0]
-			val := valRule[1]
-
-			switch rule {
-			case "len":
-				intVal, err := strconv.Atoi(val)
-				if err != nil {
-					return err
-				}
-
-				if intVal != len(varValue.(string)) {
-					return ErrValidationLength
-				}
-			case "min":
-				intVal, err := strconv.Atoi(val)
-				if err != nil {
-					return err
-				}
-
-				if intVal > varValue.(int) {
-					return ErrValidationMinimum
-				}
-			case "max":
-				intVal, err := strconv.Atoi(val)
-				if err != nil {
-					return err
-				}
-
-				if intVal < varValue.(int) {
-					return ErrValidationMaximum
-				}
-			case "in":
-				inStr := strings.Split(val, ",")
-
-				if !contains(inStr, fmt.Sprintf("%v", varValue)) {
-					return ErrValidationContains
-				}
-			case "regexp":
-				matched, err := regexp.MatchString(val, fmt.Sprintf("%v", varValue))
-				if err != nil {
-					return err
-				}
-
-				if !matched {
-					return ErrValidationRegexp
-				}
-			default:
+			if err := validateRule(rawRule, varValue); err != nil {
+				return err
 			}
 		}
+	}
 
+	return nil
+}
+
+func validateRule(rawRule string, varValue interface{}) error {
+	valRule := strings.Split(rawRule, ":")
+
+	if len(valRule) != 2 {
+		return ErrNoRule
+	}
+
+	rule := valRule[0]
+	val := valRule[1]
+
+	switch rule {
+	case "len":
+		if intVal, err := strconv.Atoi(val); err != nil || intVal != len(varValue.(string)) {
+			return ErrValidationLength
+		}
+	case "min":
+		if intVal, err := strconv.Atoi(val); err != nil || intVal > varValue.(int) {
+			return ErrValidationMinimum
+		}
+	case "max":
+		if intVal, err := strconv.Atoi(val); err != nil || intVal < varValue.(int) {
+			return ErrValidationMaximum
+		}
+	case "in":
+		inStr := strings.Split(val, ",")
+
+		if !contains(inStr, fmt.Sprintf("%v", varValue)) {
+			return ErrValidationContains
+		}
+	case "regexp":
+		matched, err := regexp.MatchString(val, fmt.Sprintf("%v", varValue))
+		if err != nil {
+			return err
+		}
+
+		if !matched {
+			return ErrValidationRegexp
+		}
 	}
 
 	return nil
