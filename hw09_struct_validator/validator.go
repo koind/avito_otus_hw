@@ -60,10 +60,8 @@ func Validate(v interface{}) error {
 					vErrors = append(vErrors, ValidationError{Field: varName, Err: err})
 				}
 			}
-		} else {
-			if err := validateValue(varTag, varValue); err != nil {
-				vErrors = append(vErrors, ValidationError{Field: varName, Err: err})
-			}
+		} else if err := validateValue(varTag, varValue); err != nil {
+			vErrors = append(vErrors, ValidationError{Field: varName, Err: err})
 		}
 	}
 
