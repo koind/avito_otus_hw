@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type UserRole string
@@ -34,27 +36,140 @@ type (
 		Code int    `validate:"in:200,404,500"`
 		Body string `json:"omitempty"`
 	}
+
+	MinMax struct {
+		Age int `validate:"min:18|max:50"`
+	}
+
+	In struct {
+		Role   UserRole `validate:"in:admin,stuff"`
+		Status string   `validate:"in:new,created"`
+	}
 )
 
-func TestValidate(t *testing.T) {
+func TestValidateError(t *testing.T) {
+	uRole := UserRole("www")
 	tests := []struct {
-		in          interface{}
-		expectedErr error
+		in       interface{}
+		expected error
 	}{
 		{
-			// Place your code here.
+			in:       "ErrNotStruct",
+			expected: ErrNotStruct,
 		},
-		// ...
-		// Place your code here.
+		{
+			in: Token{
+				Header:    nil,
+				Payload:   nil,
+				Signature: nil,
+			},
+			expected: nil,
+		},
+		{
+			in:       Response{Code: 201},
+			expected: ValidationErrors{{Field: "Code", Err: ErrValidationContains}},
+		},
+		{
+			in:       App{Version: ""},
+			expected: ValidationErrors{{Field: "Version", Err: ErrValidationLength}},
+		},
+		{
+			in:       MinMax{Age: 17},
+			expected: ValidationErrors{{Field: "Age", Err: ErrValidationMinimum}},
+		},
+		{
+			in:       MinMax{Age: 51},
+			expected: ValidationErrors{{Field: "Age", Err: ErrValidationMaximum}},
+		},
+		{
+			in:       In{Role: uRole, Status: "new"},
+			expected: ValidationErrors{{Field: "Role", Err: ErrValidationContains}},
+		},
+		{
+			in: In{Role: uRole, Status: "new1"},
+			expected: ValidationErrors{
+				{Field: "Role", Err: ErrValidationContains},
+				{Field: "Status", Err: ErrValidationContains},
+			},
+		},
+		{
+			in: User{
+				ID:     "asd",
+				Name:   "Name",
+				Age:    17,
+				Email:  "asd.asd",
+				Role:   uRole,
+				Phones: []string{"8 8005553535 "},
+				meta:   []byte("{}"),
+			},
+			expected: ValidationErrors{
+				{Field: "ID", Err: ErrValidationLength},
+				{Field: "Age", Err: ErrValidationMinimum},
+				{Field: "Email", Err: ErrValidationRegexp},
+				{Field: "Role", Err: ErrValidationContains},
+				{Field: "Phones", Err: ErrValidationLength},
+			},
+		},
 	}
 
 	for i, tt := range tests {
+		tt := tt
+
 		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
-			tt := tt
 			t.Parallel()
 
-			// Place your code here.
-			_ = tt
+			require.Equal(t, tt.expected, Validate(tt.in))
+		})
+	}
+}
+
+func TestValidateSuccess(t *testing.T) {
+	uRole := UserRole("admin")
+	tests := []struct {
+		in interface{}
+	}{
+		{
+			in: App{Version: "0.0.1"},
+		},
+		{
+			in: Token{
+				Header:    nil,
+				Payload:   nil,
+				Signature: nil,
+			},
+		},
+		{
+			in: Response{Code: 200},
+		},
+		{
+			in: MinMax{Age: 19},
+		},
+		{
+			in: MinMax{Age: 50},
+		},
+		{
+			in: In{Role: uRole, Status: "created"},
+		},
+		{
+			in: User{
+				ID:     "5f04797b-e4ea-4ede-91c7-576a42d1f764",
+				Name:   "Name",
+				Age:    21,
+				Email:  "test@test.ru",
+				Role:   uRole,
+				Phones: []string{"88005553535", "89995553535"},
+				meta:   []byte("{}"),
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		tt := tt
+
+		t.Run(fmt.Sprintf("case %d", i), func(t *testing.T) {
+			t.Parallel()
+
+			require.NoError(t, Validate(tt.in))
 		})
 	}
 }
