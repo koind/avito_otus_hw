@@ -2,19 +2,31 @@ package app
 
 import (
 	"context"
+	"github.com/google/uuid"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/domain/entity"
 )
 
-type App struct { // TODO
+type App struct {
+	Logger  Logger
+	Storage Storage
 }
 
-type Logger interface { // TODO
+type Logger interface {
+	Error(format string, params ...interface{})
 }
 
-type Storage interface { // TODO
+type Storage interface {
+	Select() ([]entity.Event, error)
+	Insert(e entity.Event) error
+	Update(e entity.Event) error
+	Delete(id uuid.UUID) error
 }
 
 func New(logger Logger, storage Storage) *App {
-	return &App{}
+	return &App{
+		Logger:  logger,
+		Storage: storage,
+	}
 }
 
 func (a *App) CreateEvent(ctx context.Context, id, title string) error {

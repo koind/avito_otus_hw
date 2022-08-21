@@ -2,22 +2,32 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
+	"fmt"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/http"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/memory"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/postgres"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+)
 
-	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/app"
-	"github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/logger"
-	internalhttp "github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/server/http"
-	memorystorage "github.com/fixme_my_friend/hw12_13_14_15_calendar/internal/storage/memory"
+var (
+	release   = "UNKNOWN"
+	buildDate = "UNKNOWN"
+	gitHash   = "UNKNOWN"
 )
 
 var configFile string
 
 func init() {
-	flag.StringVar(&configFile, "config", "/etc/calendar/config.toml", "Path to configuration file")
+	flag.StringVar(&configFile, "config", "configs/config.yaml", "Path to configuration file")
 }
 
 func main() {
@@ -28,17 +38,23 @@ func main() {
 		return
 	}
 
-	config := NewConfig()
-	logg := logger.New(config.Logger.Level)
+	cfg, err := config.Load(configFile)
+	if err != nil {
+		log.Fatalf("Error read configuration: %s", err)
+	}
 
-	storage := memorystorage.New()
-	calendar := app.New(logg, storage)
-
-	server := internalhttp.NewServer(logg, calendar)
+	logg, err := logger.New(cfg.Logger)
+	if err != nil {
+		log.Fatalf("Error create logger: %s", err)
+	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
+
+	storage := NewStorage(ctx, *cfg)
+	calendar := app.New(logg, storage)
+	server := http.NewServer(logg, calendar, cfg.HTTP.Host, cfg.HTTP.Port)
 
 	go func() {
 		<-ctx.Done()
@@ -57,5 +73,34 @@ func main() {
 		logg.Error("failed to start http server: " + err.Error())
 		cancel()
 		os.Exit(1) //nolint:gocritic
+	}
+}
+
+func NewStorage(ctx context.Context, cfg config.Config) app.Storage {
+	var storage app.Storage
+
+	switch cfg.Storage.Type {
+	case "memory":
+		storage = memory.New()
+	case "postgres":
+		storage = postgres.New(ctx, cfg.Storage.Dsn).Connect(ctx)
+	default:
+		log.Fatalln("Unknown type of storage: " + cfg.Storage.Type)
+	}
+
+	return storage
+}
+
+func printVersion() {
+	if err := json.NewEncoder(os.Stdout).Encode(struct {
+		Release   string
+		BuildDate string
+		GitHash   string
+	}{
+		Release:   release,
+		BuildDate: buildDate,
+		GitHash:   gitHash,
+	}); err != nil {
+		fmt.Printf("error while decode version info: %v\n", err)
 	}
 }
