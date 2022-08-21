@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/http"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/memory"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/postgres"
-	"log"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 var (
