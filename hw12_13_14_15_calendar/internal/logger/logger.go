@@ -2,11 +2,12 @@ package logger
 
 import (
 	"fmt"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
-	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
+	"github.com/sirupsen/logrus"
 )
 
 type Logger struct {

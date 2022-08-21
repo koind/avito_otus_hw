@@ -3,12 +3,13 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/domain/entity"
-	"os"
-	"time"
 )
 
 type Storage struct {

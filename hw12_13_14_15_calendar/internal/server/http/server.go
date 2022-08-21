@@ -19,8 +19,7 @@ type Logger interface {
 	LogRequest(r *netHttp.Request, code, length int)
 }
 
-type Application interface {
-}
+type Application interface{}
 
 func NewServer(logger Logger, app Application, host, port string) *Server {
 	httpServer := &Server{

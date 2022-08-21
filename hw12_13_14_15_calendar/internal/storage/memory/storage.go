@@ -1,9 +1,10 @@
 package memory
 
 import (
+	"sync"
+
 	"github.com/google/uuid"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/domain/entity"
-	"sync"
 )
 
 type Storage struct {
