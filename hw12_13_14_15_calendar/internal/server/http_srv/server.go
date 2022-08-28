@@ -1,22 +1,22 @@
-package http
+package http_srv
 
 import (
 	"context"
 	"net"
-	netHttp "net/http"
+	"net/http"
 )
 
 type Server struct {
 	host   string
 	port   string
 	logger Logger
-	server *netHttp.Server
+	server *http.Server
 }
 
 type Logger interface {
 	Info(message string, params ...interface{})
 	Error(message string, params ...interface{})
-	LogRequest(r *netHttp.Request, code, length int)
+	LogRequest(r *http.Request, code, length int)
 }
 
 type Application interface{}
@@ -29,9 +29,9 @@ func NewServer(logger Logger, app Application, host, port string) *Server {
 		server: nil,
 	}
 
-	newServer := &netHttp.Server{
+	newServer := &http.Server{
 		Addr:    net.JoinHostPort(host, port),
-		Handler: loggingMiddleware(netHttp.HandlerFunc(httpServer.handleHTTP), logger),
+		Handler: loggingMiddleware(http.HandlerFunc(httpServer.handleHTTP), logger),
 	}
 
 	httpServer.server = newServer
@@ -39,7 +39,7 @@ func NewServer(logger Logger, app Application, host, port string) *Server {
 	return httpServer
 }
 
-func (s *Server) handleHTTP(w netHttp.ResponseWriter, r *netHttp.Request) {
+func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("hello-world"))
 	w.WriteHeader(200)
 }
