@@ -14,7 +14,7 @@ import (
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/httpSrv"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/https"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/memory"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/postgres"
 )
@@ -55,7 +55,7 @@ func main() {
 
 	storage := NewStorage(ctx, *cfg)
 	calendar := app.New(logg, storage)
-	server := httpSrv.NewServer(logg, calendar, cfg.HTTP.Host, cfg.HTTP.Port)
+	server := https.NewServer(logg, calendar, cfg.HTTP.Host, cfg.HTTP.Port)
 
 	go func() {
 		<-ctx.Done()
@@ -64,14 +64,14 @@ func main() {
 		defer cancel()
 
 		if err := server.Stop(ctx); err != nil {
-			logg.Error("failed to stop httpSrv server: " + err.Error())
+			logg.Error("failed to stop https server: " + err.Error())
 		}
 	}()
 
 	logg.Info("calendar is running...")
 
 	if err := server.Start(ctx); err != nil {
-		logg.Error("failed to start httpSrv server: " + err.Error())
+		logg.Error("failed to start https server: " + err.Error())
 		cancel()
 		os.Exit(1) //nolint:gocritic
 	}
