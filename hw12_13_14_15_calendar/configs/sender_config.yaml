@@ -2,7 +2,7 @@ logger:
   level: info
   file: stderr
 storage:
-  type: "base"
+  type: "postgres"
   dsn: "postgresql://calendar:postgres@localhost:5432/calendar"
 rabbit:
   dsn: "amqp://guest:guest@localhost:5672"
