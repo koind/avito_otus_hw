@@ -25,6 +25,8 @@ type Storage interface {
 	Insert(e entity.Event) error
 	Update(e entity.Event) error
 	Delete(id uuid.UUID) error
+
+	EventSource
 }
 
 func New(logger Logger, storage Storage) *App {
