@@ -57,3 +57,12 @@ func (s *Storage) Select() ([]entity.Event, error) {
 	}
 	return events, nil
 }
+
+func (s *Storage) SelectOne(id uuid.UUID) (*entity.Event, error) {
+	event, has := s.events[id]
+	if !has {
+		return nil, entity.ErrNotExistEvent
+	}
+
+	return &event, nil
+}

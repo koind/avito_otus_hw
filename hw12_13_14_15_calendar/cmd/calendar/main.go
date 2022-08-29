@@ -14,6 +14,7 @@ import (
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/grpcs"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/https"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/memory"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/postgres"
@@ -55,6 +56,22 @@ func main() {
 
 	storage := NewStorage(ctx, *cfg)
 	calendar := app.New(logg, storage)
+
+	// gRPC
+	serverGrpc := grpcs.NewServer(logg, calendar, cfg.GRPC.Host, cfg.GRPC.Port)
+
+	go func() {
+		if err := serverGrpc.Start(); err != nil {
+			logg.Error("failed to start grpc server: " + err.Error())
+		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		serverGrpc.Stop()
+	}()
+
+	// HTTP
 	server := https.NewServer(logg, calendar, cfg.HTTP.Host, cfg.HTTP.Port)
 
 	go func() {

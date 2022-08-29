@@ -4,6 +4,9 @@ import (
 	"context"
 	"net"
 	"net/http"
+
+	"github.com/gorilla/mux"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
 )
 
 type Server struct {
@@ -21,7 +24,7 @@ type Logger interface {
 
 type Application interface{}
 
-func NewServer(logger Logger, app Application, host, port string) *Server {
+func NewServer(logger Logger, app *app.App, host, port string) *Server {
 	httpServer := &Server{
 		host:   host,
 		port:   port,
@@ -31,7 +34,7 @@ func NewServer(logger Logger, app Application, host, port string) *Server {
 
 	newServer := &http.Server{
 		Addr:    net.JoinHostPort(host, port),
-		Handler: loggingMiddleware(http.HandlerFunc(httpServer.handleHTTP), logger),
+		Handler: loggingMiddleware(routes(app), logger),
 	}
 
 	httpServer.server = newServer
@@ -39,9 +42,16 @@ func NewServer(logger Logger, app Application, host, port string) *Server {
 	return httpServer
 }
 
-func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("hello-world"))
-	w.WriteHeader(200)
+func routes(app *app.App) http.Handler {
+	r := mux.NewRouter()
+	eventHandler := NewEventHandler(app)
+
+	r.HandleFunc("/events", eventHandler.List).Methods("GET")
+	r.HandleFunc("/events", eventHandler.Create).Methods("POST")
+	r.HandleFunc("/events/{id}", eventHandler.Update).Methods("PUT")
+	r.HandleFunc("/events/{id}", eventHandler.Delete).Methods("DELETE")
+
+	return r
 }
 
 func (s *Server) Start(ctx context.Context) error {
