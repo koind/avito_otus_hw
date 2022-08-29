@@ -7,14 +7,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v4"
+	pgx4 "github.com/jackc/pgx/v4"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/domain/entity"
 )
 
 type Storage struct {
 	ctx  context.Context
-	conn *pgx.Conn
+	conn *pgx4.Conn
 	dsn  string
 }
 
@@ -26,7 +26,7 @@ func New(ctx context.Context, dsn string) *Storage {
 }
 
 func (s *Storage) Connect(ctx context.Context) app.Storage {
-	conn, err := pgx.Connect(ctx, s.dsn)
+	conn, err := pgx4.Connect(ctx, s.dsn)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connect to database: %v\n", err)
 		os.Exit(1)
