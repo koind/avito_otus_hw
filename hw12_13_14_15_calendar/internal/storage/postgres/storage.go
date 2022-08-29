@@ -183,7 +183,7 @@ func (s *Storage) GetOldEvents(timeBefore time.Time) ([]entity.Event, error) {
 	return rowsToEvents(rows)
 }
 
-func rowsToEvents(rows pgx.Rows) ([]entity.Event, error) {
+func rowsToEvents(rows pgx4.Rows) ([]entity.Event, error) {
 	var events []entity.Event
 
 	for rows.Next() {
