@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	yaml3 "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -39,7 +39,7 @@ func Load(configFile string) (*Config, error) {
 	}
 
 	newConfig := NewConfig()
-	err = yaml3.Unmarshal(content, &newConfig)
+	err = yaml.Unmarshal(content, &newConfig)
 	if err != nil {
 		return nil, fmt.Errorf("wrong params in configuration file  %s: %w", configFile, err)
 	}
