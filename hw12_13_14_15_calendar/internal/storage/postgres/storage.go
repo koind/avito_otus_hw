@@ -150,7 +150,7 @@ func (s *Storage) SelectOne(id uuid.UUID) (*entity.Event, error) {
 		return &e, nil
 	}
 
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, pgx4.ErrNoRows) {
 		return nil, entity.ErrNotExistEvent
 	}
 
