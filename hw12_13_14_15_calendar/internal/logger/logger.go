@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
 	"github.com/sirupsen/logrus"
@@ -14,39 +15,49 @@ type Logger struct {
 	logger *logrus.Logger
 }
 
-func New(cfg config.LoggerConf) (*Logger, error) {
-	log := logrus.New()
+func New(loggerConfig config.LoggerConf) (*Logger, error) {
+	logger := logrus.New()
 
-	output, err := openLog(cfg.Filename)
+	loggerOutput, err := parseLogFile(loggerConfig.Filename)
 	if err != nil {
-		return nil, fmt.Errorf("error open log file: %w", err)
+		return nil, fmt.Errorf("invalid log file name: %w", err)
 	}
+	logger.SetOutput(loggerOutput)
 
-	log.SetOutput(output)
-
-	level, err := logrus.ParseLevel(cfg.Level)
+	loggerLevel, err := logrus.ParseLevel(string(loggerConfig.Level))
 	if err != nil {
 		return nil, err
 	}
+	logger.SetLevel(loggerLevel)
 
-	log.SetLevel(level)
-	log.SetFormatter(&logrus.JSONFormatter{})
+	logger.SetFormatter(&logrus.JSONFormatter{})
 
-	return &Logger{log}, nil
+	return &Logger{
+		logger,
+	}, nil
+}
+
+func (l *Logger) Debug(message string, params ...interface{}) {
+	l.logger.Debugf(message, params...)
 }
 
 func (l *Logger) Info(message string, params ...interface{}) {
 	l.logger.Infof(message, params...)
 }
 
+func (l *Logger) Warn(message string, params ...interface{}) {
+	l.logger.Warnf(message, params...)
+}
+
 func (l *Logger) Error(message string, params ...interface{}) {
 	l.logger.Errorf(message, params...)
 }
 
-func (l *Logger) LogRequest(r *http.Request, code, length int) {
+func (l *Logger) LogHTTPRequest(r *http.Request, code, length int) {
 	l.logger.Infof(
-		"%s %s %s %s %d %d %q",
+		"%s [%s] %s %s %s %d %d %q",
 		r.RemoteAddr,
+		time.Now().Format("02/Jan/2006:15:04:05 MST"),
 		r.Method,
 		r.RequestURI,
 		r.Proto,
@@ -56,16 +67,14 @@ func (l *Logger) LogRequest(r *http.Request, code, length int) {
 	)
 }
 
-func openLog(file string) (io.Writer, error) {
-	switch file {
+func parseLogFile(filename string) (io.Writer, error) {
+	switch filename {
 	case "stderr":
-		fmt.Println("stderr")
 		return os.Stderr, nil
 	case "stdout":
-		fmt.Println("stdout")
 		return os.Stdout, nil
 	default:
-		file, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+		file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 		if err != nil {
 			return nil, err
 		}

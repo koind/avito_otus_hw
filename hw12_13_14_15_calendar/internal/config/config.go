@@ -1,29 +1,52 @@
 package config
 
 import (
-	"fmt"
 	"os"
-
-	yaml3 "gopkg.in/yaml.v3"
 )
 
-type CalendarConf struct {
+type Config struct {
 	Logger  LoggerConf
 	Storage StorageConf
 	HTTP    HTTPConf
 	GRPC    GRPCConf
 }
 
-type SchedulerConf struct {
+type SchedulerConfig struct {
 	Logger  LoggerConf
 	Storage StorageConf
 	Rabbit  RabbitConf
 }
 
-type SenderConf struct {
+type SenderConfig struct {
 	Logger  LoggerConf
 	Storage StorageConf
 	Rabbit  RabbitConf
+}
+
+type Level string
+
+const (
+	Debug Level = "debug"
+	Info  Level = "info"
+	Warn  Level = "warn"
+	Error Level = "error"
+)
+
+type LoggerConf struct {
+	Level    Level
+	Filename string
+}
+
+type StorageType string
+
+const (
+	SQL      StorageType = "sql"
+	InMemory StorageType = "in-memory"
+)
+
+type StorageConf struct {
+	Type StorageType
+	Dsn  string
 }
 
 type HTTPConf struct {
@@ -36,63 +59,77 @@ type GRPCConf struct {
 	Port string
 }
 
-type LoggerConf struct {
-	Level    string
-	Filename string
-}
-
-type StorageConf struct {
-	Type string
-	Dsn  string
-}
-
 type RabbitConf struct {
 	Dsn      string
 	Exchange string
 	Queue    string
 }
 
-func LoadCalendar(configFile string) (*CalendarConf, error) {
-	content, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("wrong configuration file %s: %w", configFile, err)
-	}
-
-	newConfig := new(CalendarConf)
-	err = yaml3.Unmarshal(content, newConfig)
-	if err != nil {
-		return nil, fmt.Errorf("wrong params in configuration file %s: %w", configFile, err)
-	}
-
-	return newConfig, nil
+func NewConfig() Config {
+	return Config{}
 }
 
-func LoadScheduler(configFile string) (*SchedulerConf, error) {
-	content, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("wrong configuration file %s: %w", configFile, err)
-	}
-
-	newConfig := new(SchedulerConf)
-	err = yaml3.Unmarshal(content, newConfig)
-	if err != nil {
-		return nil, fmt.Errorf("wrong params in configuration file %s: %w", configFile, err)
-	}
-
-	return newConfig, nil
+func NewSchedulerConfig() SchedulerConfig {
+	return SchedulerConfig{}
 }
 
-func LoadSender(configFile string) (*SenderConf, error) {
-	content, err := os.ReadFile(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("wrong configuration file %s: %w", configFile, err)
-	}
+func NewSenderConfig() SenderConfig {
+	return SenderConfig{}
+}
 
-	newConfig := new(SenderConf)
-	err = yaml3.Unmarshal(content, newConfig)
-	if err != nil {
-		return nil, fmt.Errorf("wrong params in configuration file %s: %w", configFile, err)
-	}
+func LoadConfig() (*Config, error) {
+	return &Config{
+		Logger: LoggerConf{
+			Level:    Level(os.Getenv("LOG_LEVEL")),
+			Filename: os.Getenv("LOG_FILENAME"),
+		},
+		Storage: StorageConf{
+			Type: StorageType(os.Getenv("STORAGE_TYPE")),
+			Dsn:  os.Getenv("STORAGE_DSN"),
+		},
+		HTTP: HTTPConf{
+			Host: os.Getenv("HTTP_HOST"),
+			Port: os.Getenv("HTTP_PORT"),
+		},
+		GRPC: GRPCConf{
+			Host: os.Getenv("GRPC_HOST"),
+			Port: os.Getenv("GRPC_PORT"),
+		},
+	}, nil
+}
 
-	return newConfig, nil
+func LoadSchedulerConfig() (*SchedulerConfig, error) {
+	return &SchedulerConfig{
+		Logger: LoggerConf{
+			Level:    Level(os.Getenv("LOG_LEVEL")),
+			Filename: os.Getenv("LOG_FILENAME"),
+		},
+		Storage: StorageConf{
+			Type: StorageType(os.Getenv("STORAGE_TYPE")),
+			Dsn:  os.Getenv("STORAGE_DSN"),
+		},
+		Rabbit: RabbitConf{
+			Dsn:      os.Getenv("RABBIT_DSN"),
+			Exchange: os.Getenv("RABBIT_EXCHANGE"),
+			Queue:    os.Getenv("RABBIT_QUEUE"),
+		},
+	}, nil
+}
+
+func LoadSenderConfig() (*SenderConfig, error) {
+	return &SenderConfig{
+		Logger: LoggerConf{
+			Level:    Level(os.Getenv("LOG_LEVEL")),
+			Filename: os.Getenv("LOG_FILENAME"),
+		},
+		Storage: StorageConf{
+			Type: StorageType(os.Getenv("STORAGE_TYPE")),
+			Dsn:  os.Getenv("STORAGE_DSN"),
+		},
+		Rabbit: RabbitConf{
+			Dsn:      os.Getenv("RABBIT_DSN"),
+			Exchange: os.Getenv("RABBIT_EXCHANGE"),
+			Queue:    os.Getenv("RABBIT_QUEUE"),
+		},
+	}, nil
 }

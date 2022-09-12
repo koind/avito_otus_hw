@@ -1,13 +1,12 @@
 logger:
-  level: debug
-  filename: stderr
+  level: "info"
+  filename: "stderr"
+storage:
+  type: "in-memory"
 http:
   host: "127.0.0.1"
-  port: "8000"
+  port: "8085"
+
 grpc:
   host: "127.0.0.1"
-  port: "50051"
-storage:
-#  type: "postgres"
-  type: "memory"
-  dsn: "postgresql://calendar:postgres@localhost:5432/calendar"
+  port: "8086"

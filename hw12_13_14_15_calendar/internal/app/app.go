@@ -2,11 +2,12 @@ package app
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/domain/entity"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage"
 )
 
 type App struct {
@@ -15,18 +16,22 @@ type App struct {
 }
 
 type Logger interface {
-	Error(format string, params ...interface{})
+	Debug(format string, params ...interface{})
 	Info(format string, params ...interface{})
+	Warn(format string, params ...interface{})
+	Error(format string, params ...interface{})
+	LogHTTPRequest(r *http.Request, code, length int)
 }
 
 type Storage interface {
-	SelectOne(id uuid.UUID) (*entity.Event, error)
-	Select() ([]entity.Event, error)
-	Insert(e entity.Event) error
-	Update(e entity.Event) error
+	Create(e storage.Event) error
+	Update(e storage.Event) error
 	Delete(id uuid.UUID) error
-
-	EventSource
+	Find(id uuid.UUID) (*storage.Event, error)
+	FindAll() ([]storage.Event, error)
+	FindAtDay(day time.Time) ([]storage.Event, error)
+	FindAtWeek(dayStart time.Time) ([]storage.Event, error)
+	FindAtMonth(dayStart time.Time) ([]storage.Event, error)
 }
 
 func New(logger Logger, storage Storage) *App {
@@ -36,34 +41,48 @@ func New(logger Logger, storage Storage) *App {
 	}
 }
 
-func (a *App) CreateEvent(ctx context.Context, event entity.Event) error {
-	_, err := a.Storage.SelectOne(event.ID)
-	if err != nil && !errors.Is(err, entity.ErrNotExistEvent) {
-		a.Logger.Error("Error CreateEvent: Event exists: %s", err)
+func (a *App) CreateEvent(ctx context.Context, event storage.Event) error {
+	var existingEvent *storage.Event
+	var err error
 
+	a.Logger.Debug("App.CreateEvent %s", event.ID)
+
+	if existingEvent, err = a.Storage.Find(event.ID); err != nil {
+		a.Logger.Error("App.CreateEvent error: find existing event error: %s", err)
 		return err
 	}
 
-	if err := a.Storage.Insert(event); err != nil {
-		a.Logger.Error("Error CreateEvent. Can't create event: %s", err)
+	if existingEvent != nil {
+		a.Logger.Warn("App.CreateEvent error: event with ID %s already exists", event.ID)
+		return fmt.Errorf("event with ID %s already exists", event.ID)
+	}
 
+	if err = a.Storage.Create(event); err != nil {
+		a.Logger.Error("App.CreateEvent error: %s", err)
 		return err
 	}
 
 	return nil
 }
 
-func (a *App) UpdateEvent(ctx context.Context, event entity.Event) error {
-	var dbEvent *entity.Event
+func (a *App) UpdateEvent(ctx context.Context, event storage.Event) error {
+	var existingEvent *storage.Event
 	var err error
 
-	if dbEvent, err = a.Storage.SelectOne(event.ID); err != nil || dbEvent == nil {
-		a.Logger.Error("Error UpdateEvent: Event is absent: %s", err)
+	a.Logger.Debug("App.UpdateEvent %s", event.ID)
+
+	if existingEvent, err = a.Storage.Find(event.ID); err != nil {
+		a.Logger.Error("App.UpdateEvent error: find existing event error: %s", err)
 		return err
 	}
 
+	if existingEvent == nil {
+		a.Logger.Warn("App.UpdateEvent error: event with ID %s not found", event.ID)
+		return fmt.Errorf("event with ID %s not found", event.ID)
+	}
+
 	if err = a.Storage.Update(event); err != nil {
-		a.Logger.Error("Error UpdateEvent. Can't update event: %s", err)
+		a.Logger.Error("App.UpdateEvent error: %s", err)
 		return err
 	}
 
@@ -71,55 +90,58 @@ func (a *App) UpdateEvent(ctx context.Context, event entity.Event) error {
 }
 
 func (a *App) DeleteEvent(ctx context.Context, id uuid.UUID) error {
-	var dbEvent *entity.Event
+	var existingEvent *storage.Event
 	var err error
 
-	a.Logger.Info("DeleteEvent %s", id)
+	a.Logger.Debug("App.DeleteEvent %s", id)
 
-	if dbEvent, err = a.Storage.SelectOne(id); err != nil || dbEvent == nil {
-		a.Logger.Error("Error DeleteEvent. Event is absent: %s", err)
+	if existingEvent, err = a.Storage.Find(id); err != nil {
+		a.Logger.Error("App.DeleteEvent error: find existing event error: %s", err)
 		return err
 	}
 
+	if existingEvent == nil {
+		a.Logger.Warn("App.UpdateEvent error: event with ID %s not found", id)
+		return fmt.Errorf("event with ID %s not found", id)
+	}
+
 	if err = a.Storage.Delete(id); err != nil {
-		a.Logger.Error("Error DeleteEvent. Can't delete event: %s", err)
+		a.Logger.Error("App.DeleteEvent error: %s", err)
 		return err
 	}
 
 	return nil
 }
 
-func (a *App) GetEvents(ctx context.Context) ([]entity.Event, error) {
-	return a.Storage.Select()
+func (a *App) GetEvents(ctx context.Context) ([]storage.Event, error) {
+	return a.Storage.FindAll()
 }
 
-func (a *App) GetDayIntervalEvents(ctx context.Context, day time.Time, interval time.Duration) ([]entity.Event, error) { // nolint:lll
-	events := make([]entity.Event, 0)
+func (a *App) GetEventsDay(ctx context.Context, day time.Time) ([]storage.Event, error) {
+	return a.Storage.FindAtDay(day)
+}
+
+func (a *App) GetEventsMonth(ctx context.Context, dayStart time.Time) ([]storage.Event, error) {
+	return a.Storage.FindAtMonth(dayStart)
+}
+
+func (a *App) GetEventsStartedIn(ctx context.Context, day time.Time, interval time.Duration) ([]storage.Event, error) {
+	a.Logger.Debug("App.GetEventsStartedIn: day: %s, interval: %s", day, interval)
+
+	var events []storage.Event
 	day = day.Truncate(time.Minute * 1440)
 
-	items, err := a.Storage.Select()
+	items, err := a.Storage.FindAll()
 	if err != nil {
 		return nil, err
 	}
 
 	for _, item := range items {
 		diff := item.StartedAt.Sub(day)
-		if diff >= 0 && diff < interval {
+		if diff >= 0 && diff <= interval {
 			events = append(events, item)
 		}
 	}
 
 	return events, nil
-}
-
-func (a *App) GetDayEvents(ctx context.Context, day time.Time) ([]entity.Event, error) {
-	return a.GetDayIntervalEvents(ctx, day, day.AddDate(0, 0, 1).Sub(day))
-}
-
-func (a *App) GetWeekEvents(ctx context.Context, day time.Time) ([]entity.Event, error) {
-	return a.GetDayIntervalEvents(ctx, day, day.AddDate(0, 0, 7).Sub(day))
-}
-
-func (a *App) GetMonthEvents(ctx context.Context, day time.Time) ([]entity.Event, error) {
-	return a.GetDayIntervalEvents(ctx, day, day.AddDate(0, 1, 0).Sub(day))
 }

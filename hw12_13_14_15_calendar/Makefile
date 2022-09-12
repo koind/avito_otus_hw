@@ -1,32 +1,17 @@
 BIN := "./bin/calendar"
-BIN_SCHEDULER := "./bin/calendar_scheduler"
-BIN_SENDER := "./bin/calendar_sender"
 DOCKER_IMG="calendar:develop"
 
 GIT_HASH := $(shell git log --format="%h" -n 1)
 LDFLAGS := -X main.release="develop" -X main.buildDate=$(shell date -u +%Y-%m-%dT%H:%M:%S) -X main.gitHash=$(GIT_HASH)
-
-DB_CONN := "postgresql://calendar:postgres@localhost:5432/calendar?sslmode=disable"
+DATABASE_DSN := "postgresql://postgres:postgres@localhost:54321/calendar?sslmode=disable"
 
 build:
 	go build -v -o $(BIN) -ldflags "$(LDFLAGS)" ./cmd/calendar
-	go build -v -o $(BIN_SCHEDULER) -ldflags "$(LDFLAGS)" ./cmd/scheduler
-	go build -v -o $(BIN_SENDER) -ldflags "$(LDFLAGS)" ./cmd/sender
+	go build -v -o $(BIN)_scheduler -ldflags "$(LDFLAGS)" ./cmd/scheduler
+	go build -v -o $(BIN)_sender -ldflags "$(LDFLAGS)" ./cmd/sender
 
 run: build
-	$(BIN) -config ./configs/calendar_config.yaml
-
-run-calendar:
-	go build -v -o $(BIN) -ldflags "$(LDFLAGS)" ./cmd/calendar
-	$(BIN) -config ./configs/calendar_config.yaml
-
-run-scheduler:
-	go build -v -o $(BIN_SCHEDULER) -ldflags "$(LDFLAGS)" ./cmd/scheduler
-	$(BIN_SCHEDULER) -config ./configs/scheduler_config.yaml
-
-run-sender:
-	go build -v -o $(BIN_SENDER) -ldflags "$(LDFLAGS)" ./cmd/sender
-	$(BIN_SENDER) -config ./configs/sender_config.yaml
+	$(BIN)
 
 build-img:
 	docker build \
@@ -43,6 +28,14 @@ version: build
 test:
 	go test -race ./internal/...
 
+integration-tests:
+	set -e ;\
+	docker-compose up --build -d ;\
+	test_status_code=0 ;\
+	docker-compose run tests go test github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/tests/integrations || test_status_code=$$? ;\
+	docker-compose down ;\
+	exit $$test_status_code ;
+
 install-lint-deps:
 	(which golangci-lint > /dev/null) || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell go env GOPATH)/bin v1.41.1
 
@@ -50,9 +43,15 @@ lint: install-lint-deps
 	golangci-lint run ./...
 
 migrate:
-	goose --dir=migrations postgres ${DB_CONN} up
+	goose --dir=migrations postgres $(DATABASE_DSN) up
 
 generate:
 	go generate ./...
+
+up:
+	docker-compose up -d
+
+down:
+	docker-compose down
 
 .PHONY: build run build-img run-img version test lint

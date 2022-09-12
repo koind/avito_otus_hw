@@ -2,51 +2,42 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log"
 	"os/signal"
 	"syscall"
 
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/broker/rabbitmq"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
+	internalconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
+	internallogger "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/mq"
+	transport "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/transport/log"
 )
 
-var configFile string
-
-func init() {
-	flag.StringVar(&configFile, "config", "configs/sender_config.yaml", "Path to configuration file")
-}
-
 func main() {
-	flag.Parse()
-
-	configuration, err := config.LoadSender(configFile)
+	config, err := internalconfig.LoadSenderConfig()
 	if err != nil {
-		log.Fatalf("Error read configuration: %s", err)
+		log.Fatalf("Failed to load config: %s", err)
 	}
 
-	logg, err := logger.New(configuration.Logger)
+	logg, err := internallogger.New(config.Logger)
 	if err != nil {
-		log.Fatalf("error create logger: %s", err)
+		log.Fatalf("Failed to create logger: %s", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 
-	rabbitClient, err := rabbitmq.New(
-		ctx,
-		configuration.Rabbit.Dsn,
-		configuration.Rabbit.Exchange,
-		configuration.Rabbit.Queue,
-		logg)
+	notificationSource, err := mq.NewRabbit(ctx, config.Rabbit.Dsn, config.Rabbit.Exchange, config.Rabbit.Queue, logg)
 	if err != nil {
 		cancel()
-		log.Fatalf("error create rabbit client: %s", err) //nolint:gocritic
+		log.Fatalf("Failed to create NotificationSource (rabbit): %s", err) //nolint:gocritic
 	}
 
-	sender := app.NewSender(rabbitClient, logg)
+	transports := []app.NotificationTransport{
+		transport.NewLogNotificationTransport(logg),
+	}
+
+	sender := app.NewNotificationSender(notificationSource, logg, transports)
 	sender.Run()
 
 	<-ctx.Done()

@@ -1,35 +1,44 @@
 package app
 
-import "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/domain/entity"
-
 type NotificationSource interface {
-	GetNotificationChannel() (<-chan entity.Notification, error)
+	GetNotificationChannel() (<-chan Notification, error)
 }
 
 type NotificationTransport interface {
 	String() string
-	Send(entity.Notification) error
+	Send(Notification) error
 }
 
 type NotificationSender struct {
-	source NotificationSource
-	logger Logger
+	source     NotificationSource
+	logger     Logger
+	transports []NotificationTransport
 }
 
-func NewSender(source NotificationSource, logger Logger) *NotificationSender {
-	return &NotificationSender{source, logger}
+func NewNotificationSender(
+	source NotificationSource,
+	logger Logger,
+	transports []NotificationTransport,
+) *NotificationSender {
+	return &NotificationSender{source, logger, transports}
 }
 
 func (s *NotificationSender) Run() {
-	s.logger.Info("[notification] Run")
-
-	channel, err := s.source.GetNotificationChannel()
+	s.logger.Info("[notification] start")
+	ch, err := s.source.GetNotificationChannel()
 	if err != nil {
-		s.logger.Error("[notification] Error get from channel: %s", err)
+		s.logger.Error("[notification] failed to start consume channel: %s", err)
 		return
 	}
 
-	for notification := range channel {
-		s.logger.Info("[notification] %s", notification)
+	for notification := range ch {
+		for _, t := range s.transports {
+			if err := t.Send(notification); err != nil {
+				s.logger.Error("[notification] Failed to send event notification %s to %s", notification.EventID, t.String())
+				continue
+			}
+
+			s.logger.Info("[notification] notification %s sent via %s", notification.EventID, t.String())
+		}
 	}
 }

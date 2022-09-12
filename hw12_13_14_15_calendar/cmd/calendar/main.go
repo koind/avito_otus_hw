@@ -2,34 +2,19 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/grpcs"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/https"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage"
+	internalapp "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
+	internalconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
+	internallogger "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
+	internalgrpc "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/grpc"
+	internalhttp "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/http"
+	internalstore "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/production"
 )
-
-var (
-	release   = "UNKNOWN"
-	buildDate = "UNKNOWN"
-	gitHash   = "UNKNOWN"
-)
-
-var configFile string
-
-func init() {
-	flag.StringVar(&configFile, "config", "configs/calendar_config.yaml", "Path to configuration file")
-}
 
 func main() {
 	flag.Parse()
@@ -39,24 +24,28 @@ func main() {
 		return
 	}
 
-	cfg, err := config.LoadCalendar(configFile)
+	config, err := internalconfig.LoadConfig()
 	if err != nil {
-		log.Fatalf("Error read configuration: %s", err)
+		log.Fatalf("Failed to load config: %s", err)
 	}
 
-	logg, err := logger.New(cfg.Logger)
+	logg, err := internallogger.New(config.Logger)
 	if err != nil {
-		log.Fatalf("Error create logger: %s", err)
+		log.Fatalf("Failed to create logger: %s", err)
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(),
-		syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 
-	calendar := app.New(logg, storage.New(ctx, cfg.Storage))
+	storage, err := internalstore.CreateStorage(ctx, config.Storage)
+	if err != nil {
+		cancel()
+		log.Fatalf("Failed to create storage: %s", err) //nolint:gocritic
+	}
 
-	// gRPC
-	serverGrpc := grpcs.NewServer(logg, calendar, cfg.GRPC.Host, cfg.GRPC.Port)
+	calendar := internalapp.New(logg, storage)
+
+	serverGrpc := internalgrpc.NewServer(logg, calendar, config.GRPC.Host, config.GRPC.Port)
 
 	go func() {
 		if err := serverGrpc.Start(); err != nil {
@@ -69,8 +58,14 @@ func main() {
 		serverGrpc.Stop()
 	}()
 
-	// HTTP
-	server := https.NewServer(logg, calendar, cfg.HTTP.Host, cfg.HTTP.Port)
+	serverHttp := internalhttp.NewServer(logg, calendar, config.HTTP.Host, config.HTTP.Port)
+
+	go func() {
+		if err := serverHttp.Start(ctx); err != nil {
+			logg.Error("failed to start server: " + err.Error())
+			cancel()
+		}
+	}()
 
 	go func() {
 		<-ctx.Done()
@@ -78,30 +73,12 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 		defer cancel()
 
-		if err := server.Stop(ctx); err != nil {
-			logg.Error("failed to stop https server: " + err.Error())
+		if err := serverHttp.Stop(ctx); err != nil {
+			logg.Error("failed to stop http server: " + err.Error())
 		}
 	}()
 
 	logg.Info("calendar is running...")
 
-	if err := server.Start(ctx); err != nil {
-		logg.Error("failed to start https server: " + err.Error())
-		cancel()
-		os.Exit(1) //nolint:gocritic
-	}
-}
-
-func printVersion() {
-	if err := json.NewEncoder(os.Stdout).Encode(struct {
-		Release   string
-		BuildDate string
-		GitHash   string
-	}{
-		Release:   release,
-		BuildDate: buildDate,
-		GitHash:   gitHash,
-	}); err != nil {
-		fmt.Printf("error while decode version info: %v\n", err)
-	}
+	<-ctx.Done()
 }
