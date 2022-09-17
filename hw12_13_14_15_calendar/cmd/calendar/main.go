@@ -2,34 +2,24 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
-	"fmt"
 	"log"
-	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
+	calendarconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/configs"
+	app "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/grpcs"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/https"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/memory"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/postgres"
+	internalgrpc "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/grpc"
+	internalhttp "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/http"
+	sqlstorage "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/sql"
 )
 
-var (
-	release   = "UNKNOWN"
-	buildDate = "UNKNOWN"
-	gitHash   = "UNKNOWN"
-)
-
-var configFile string
+var configFile, logFile string
 
 func init() {
-	flag.StringVar(&configFile, "config", "configs/config.yaml", "Path to configuration file")
+	flag.StringVar(&configFile, "config", "../../configs/calendar_config.toml", "Path to configuration file")
+	flag.StringVar(&logFile, "log", "../../log/logs.log", "Path to log file")
 }
 
 func main() {
@@ -40,85 +30,36 @@ func main() {
 		return
 	}
 
-	cfg, err := config.Load(configFile)
+	config, err := calendarconfig.NewConfig(configFile)
 	if err != nil {
-		log.Fatalf("Error read configuration: %s", err)
+		log.Println("can't read config file: " + err.Error())
+		return
 	}
 
-	logg, err := logger.New(cfg.Logger)
-	if err != nil {
-		log.Fatalf("Error create logger: %s", err)
-	}
+	zapLogg := logger.New(logFile, config.Logger.Level)
+	defer zapLogg.ZapLogger.Sync()
 
 	ctx, cancel := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 
-	storage := NewStorage(ctx, *cfg)
-	calendar := app.New(logg, storage)
-
-	// gRPC
-	serverGrpc := grpcs.NewServer(logg, calendar, cfg.GRPC.Host, cfg.GRPC.Port)
-
-	go func() {
-		if err := serverGrpc.Start(); err != nil {
-			logg.Error("failed to start grpc server: " + err.Error())
-		}
-	}()
-
-	go func() {
-		<-ctx.Done()
-		serverGrpc.Stop()
-	}()
-
-	// HTTP
-	server := https.NewServer(logg, calendar, cfg.HTTP.Host, cfg.HTTP.Port)
-
-	go func() {
-		<-ctx.Done()
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-		defer cancel()
-
-		if err := server.Stop(ctx); err != nil {
-			logg.Error("failed to stop https server: " + err.Error())
-		}
-	}()
-
-	logg.Info("calendar is running...")
-
-	if err := server.Start(ctx); err != nil {
-		logg.Error("failed to start https server: " + err.Error())
-		cancel()
-		os.Exit(1) //nolint:gocritic
+	storage := sqlstorage.New(config)
+	if err := storage.Connect(ctx); err != nil {
+		zapLogg.Info("connection to database failed: " + err.Error())
+		return
 	}
-}
+	zapLogg.Info("Successfully connected to database...")
+	defer storage.Close(ctx)
 
-func NewStorage(ctx context.Context, cfg config.Config) app.Storage {
-	var storage app.Storage
+	calendar := app.New(zapLogg, storage)
 
-	switch cfg.Storage.Type {
-	case "memory":
-		storage = memory.New()
-	case "postgres":
-		storage = postgres.New(ctx, cfg.Storage.Dsn).Connect(ctx)
-	default:
-		log.Fatalln("Unknown type of storage: " + cfg.Storage.Type)
-	}
+	go internalgrpc.RunGRPCServer(ctx, config, calendar, zapLogg)
 
-	return storage
-}
+	go internalhttp.RunHTTPServer(ctx, config, calendar, zapLogg)
 
-func printVersion() {
-	if err := json.NewEncoder(os.Stdout).Encode(struct {
-		Release   string
-		BuildDate string
-		GitHash   string
-	}{
-		Release:   release,
-		BuildDate: buildDate,
-		GitHash:   gitHash,
-	}); err != nil {
-		fmt.Printf("error while decode version info: %v\n", err)
-	}
+	log.Println("Calendar service started")
+
+	<-ctx.Done()
+
+	zapLogg.Info("\nAll servers are stopped...")
 }

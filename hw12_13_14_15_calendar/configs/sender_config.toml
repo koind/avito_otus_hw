@@ -1,0 +1,6 @@
+[amqp]
+source = "amqp://guest:guest@localhost:5672/"
+
+[storage]
+driver = "postgres"
+source = "postgres://calendar:postgres@localhost:5432/calendar?sslmode=disable"

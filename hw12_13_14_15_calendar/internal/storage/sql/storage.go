@@ -1,0 +1,137 @@
+package sqlstorage
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	calendarconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/configs"
+	sqlc "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/sql/sqlc"
+	domainModels "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/models"
+
+	_ "github.com/lib/pq" //nolint
+)
+
+type Storage struct {
+	db        *sql.DB
+	DBQueries *sqlc.Queries
+
+	Driver string
+	Source string
+}
+
+func New(c calendarconfig.Config) *Storage {
+	return &Storage{
+		Driver: c.Storage.Driver,
+		Source: c.Storage.Source,
+	}
+}
+
+func (s *Storage) Connect(ctx context.Context) error {
+	db, err := sql.Open(s.Driver, s.Source)
+	if err != nil {
+		return fmt.Errorf("cannot open pgx driver: %w", err)
+	}
+
+	s.db = db
+	connErr := s.db.PingContext(ctx)
+	if connErr != nil {
+		return connErr
+	}
+
+	s.DBQueries = sqlc.New(db)
+
+	return nil
+}
+
+func (s *Storage) Close(ctx context.Context) error {
+	return s.db.Close()
+}
+
+func (s *Storage) CreateEvent(ctx context.Context, event domainModels.Event) (domainModels.Event, error) {
+	createEvent := sqlc.CreateEventParams{
+		Title:        event.Title,
+		StartEvent:   event.StartEvent,
+		EndEvent:     event.EndEvent,
+		Description:  sql.NullString{String: event.Description, Valid: true},
+		IDUser:       event.IDUser,
+		Notification: sql.NullTime{Time: event.Notification, Valid: true},
+	}
+
+	createdModel, err := s.DBQueries.CreateEvent(ctx, createEvent)
+
+	return toViewModel(createdModel), err
+}
+
+func (s *Storage) UpdateEvent(ctx context.Context, event domainModels.Event) (domainModels.Event, error) {
+	updateEvent := sqlc.UpdateEventParams{
+		ID:           event.ID,
+		Title:        event.Title,
+		StartEvent:   event.StartEvent,
+		EndEvent:     event.EndEvent,
+		Description:  sql.NullString{String: event.Description, Valid: true},
+		IDUser:       event.IDUser,
+		Notification: sql.NullTime{Time: event.Notification, Valid: true},
+	}
+
+	updatedEvent, err := s.DBQueries.UpdateEvent(ctx, updateEvent)
+
+	return toViewModel(updatedEvent), err
+}
+
+func (s *Storage) DeleteEvent(ctx context.Context, id int64) error {
+	return s.DBQueries.DeleteEvent(ctx, id)
+}
+
+func (s *Storage) GetEvent(ctx context.Context, id int64) (eventModel domainModels.Event, err error) {
+	event, err := s.DBQueries.GetEvent(ctx, id)
+	if err != nil {
+		return eventModel, err
+	}
+	return toViewModel(event), err
+}
+
+func (s *Storage) GetDayEvents(ctx context.Context, day time.Time) (eventModels []domainModels.Event, err error) {
+	events, err := s.DBQueries.GetDayEvents(ctx, day)
+	if err != nil {
+		return eventModels, err
+	}
+	return toViewModels(events), err
+}
+
+func (s Storage) GetWeekEvents(ctx context.Context, weekStart time.Time) (eventModels []domainModels.Event, err error) {
+	events, err := s.DBQueries.GetWeekEvents(ctx, weekStart)
+	if err != nil {
+		return eventModels, err
+	}
+	return toViewModels(events), err
+}
+
+func (s Storage) GetMonthEvents(ctx context.Context, monthStart time.Time) (evModels []domainModels.Event, err error) {
+	events, err := s.DBQueries.GetMonthEvents(ctx, monthStart)
+	if err != nil {
+		return evModels, err
+	}
+	return toViewModels(events), err
+}
+
+func toViewModel(ev sqlc.Event) domainModels.Event {
+	return domainModels.Event{
+		ID:           ev.ID,
+		Title:        ev.Title,
+		StartEvent:   ev.StartEvent,
+		EndEvent:     ev.EndEvent,
+		Description:  ev.Description.String,
+		IDUser:       ev.IDUser,
+		Notification: ev.Notification.Time,
+	}
+}
+
+func toViewModels(events []sqlc.Event) []domainModels.Event {
+	result := make([]domainModels.Event, len(events))
+	for i, event := range events { //nolint
+		result[i] = toViewModel(event)
+	}
+	return result
+}
