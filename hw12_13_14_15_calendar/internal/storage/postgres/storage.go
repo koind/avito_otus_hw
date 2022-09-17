@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -43,7 +44,7 @@ func (s *Storage) Close(ctx context.Context) error {
 
 func (s *Storage) Insert(event entity.Event) error {
 	fmt.Print("Storage Insert")
-	sql := `INSERT INTO events (id, user_id, title, started_at, finished_at, description, notify_before_time) 
+	sql := `INSERT INTO events (id, user_id, title, started_at, finished_at, description, notify_at) 
 			VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := s.conn.Exec(
 		s.ctx,
@@ -54,7 +55,7 @@ func (s *Storage) Insert(event entity.Event) error {
 		event.StartedAt.Format(time.RFC3339),
 		event.FinishedAt.Format(time.RFC3339),
 		event.Description,
-		event.NotifyBeforeTime.Format(time.RFC3339),
+		event.NotifyAt.Format(time.RFC3339),
 	)
 
 	return err
@@ -68,7 +69,7 @@ func (s *Storage) Update(event entity.Event) error {
     			started_at = $3,
     			finished_at = $4,
     			description = $5,
-    			notify_before_time = $6
+    			notify_at = $6
 			WHERE id = $7`
 
 	_, err := s.conn.Exec(
@@ -79,7 +80,7 @@ func (s *Storage) Update(event entity.Event) error {
 		event.StartedAt.Format(time.RFC3339),
 		event.FinishedAt.Format(time.RFC3339),
 		event.Description,
-		event.NotifyBeforeTime.Format(time.RFC3339),
+		event.NotifyAt.Format(time.RFC3339),
 		event.ID.String(),
 	)
 
@@ -96,7 +97,7 @@ func (s *Storage) Delete(id uuid.UUID) error {
 func (s *Storage) Select() ([]entity.Event, error) {
 	events := make([]entity.Event, 0)
 
-	sql := `SELECT id, user_id, title, started_at, finished_at, description, notify_before_time 
+	sql := `SELECT id, user_id, title, started_at, finished_at, description, notify_at 
 			FROM events
 			ORDER BY id`
 
@@ -115,7 +116,7 @@ func (s *Storage) Select() ([]entity.Event, error) {
 			&event.StartedAt,
 			&event.FinishedAt,
 			&event.Description,
-			&event.NotifyBeforeTime,
+			&event.NotifyAt,
 		); err != nil {
 			return nil, fmt.Errorf("error scan result: %w", err)
 		}
@@ -128,4 +129,30 @@ func (s *Storage) Select() ([]entity.Event, error) {
 	}
 
 	return events, nil
+}
+
+func (s *Storage) SelectOne(id uuid.UUID) (*entity.Event, error) {
+	var e entity.Event
+
+	sql := `SELECT id, user_id, title, started_at, finished_at, description, notify_at 
+			FROM events
+			WHERE id = $1`
+	err := s.conn.QueryRow(s.ctx, sql, id).Scan(
+		&e.ID,
+		&e.UserID,
+		&e.Title,
+		&e.StartedAt,
+		&e.FinishedAt,
+		&e.Description,
+		&e.NotifyAt,
+	)
+	if err == nil {
+		return &e, nil
+	}
+
+	if errors.Is(err, pgx4.ErrNoRows) {
+		return nil, entity.ErrNotExistEvent
+	}
+
+	return nil, fmt.Errorf("error scan result: %w", err)
 }
