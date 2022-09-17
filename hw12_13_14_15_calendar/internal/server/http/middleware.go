@@ -1,32 +1,49 @@
 package internalhttp
 
 import (
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
+	"fmt"
 	"net/http"
+	"strings"
+	"time"
 )
 
-type ResponseWriter struct {
+type statusWriter struct {
 	http.ResponseWriter
-	StatusCode  int
-	BytesLength int
+	status int
+	length int
 }
 
-func (w *ResponseWriter) WriteHeader(statusCode int) {
-	w.StatusCode = statusCode
-	w.ResponseWriter.WriteHeader(statusCode)
+func (w *statusWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
 }
 
-func (w *ResponseWriter) Write(data []byte) (int, error) {
-	n, err := w.ResponseWriter.Write(data)
-	w.BytesLength += n
-
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = 200
+	}
+	n, err := w.ResponseWriter.Write(b)
+	w.length += n
 	return n, err
 }
 
-func loggingMiddleware(next http.Handler, log app.Logger) http.Handler {
+func addLoggingMiddleware(logger Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		myWriter := &ResponseWriter{w, 0, 0}
-		next.ServeHTTP(myWriter, r)
-		log.LogHTTPRequest(r, myWriter.StatusCode, myWriter.BytesLength)
+		sw := statusWriter{ResponseWriter: w}
+		clientIP := r.RemoteAddr
+		url := r.URL.Path
+		httpProtocol := r.Proto
+		method := r.Method
+		userAgent := strings.Split(r.UserAgent(), " ")[0]
+
+		start := time.Now()
+		next.ServeHTTP(&sw, r)
+		duration := time.Since(start)
+
+		logger.Info(
+			fmt.Sprintf("http request has been made...\nClientIP:%s;\nMethod:%s;\nURL:%s;\nHttpProtocol:%s;\nStatusCode:%d;"+
+				"\nContentLength:%d;\nLatency:%s;\nUser_agent:%s",
+				clientIP, method, url, httpProtocol, sw.status, sw.length, duration, userAgent),
+		)
 	})
 }

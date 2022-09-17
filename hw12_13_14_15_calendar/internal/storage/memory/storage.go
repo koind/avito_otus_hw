@@ -1,169 +1,137 @@
 package memorystorage
 
 import (
-	"sort"
+	"context"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	calendarconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/configs"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage"
+	models "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/models"
 )
 
-type Storage struct {
-	mu     sync.RWMutex
-	events map[uuid.UUID]storage.Event
+var globalNewEventID int64 = 1
+
+type MemoryStorage struct {
+	mutex *sync.RWMutex
+
+	events map[int64]models.Event
 }
 
-func New() *Storage {
-	return &Storage{
-		events: make(map[uuid.UUID]storage.Event),
+func New(c calendarconfig.Config) *MemoryStorage {
+	return &MemoryStorage{
+		events: make(map[int64]models.Event),
+		mutex:  new(sync.RWMutex),
 	}
 }
 
-func (s *Storage) Create(e storage.Event) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *MemoryStorage) CreateEvent(ctx context.Context, ev models.Event) (models.Event, error) {
+	var newEvent models.Event
+	s.mutex.Lock()
+	newEvent.ID = globalNewEventID
+	newEvent.Title = ev.Title
+	newEvent.StartEvent = ev.StartEvent
+	newEvent.EndEvent = ev.EndEvent
+	newEvent.Description = ev.Description
+	newEvent.IDUser = ev.IDUser
+	newEvent.Notification = ev.Notification
+	s.events[globalNewEventID] = newEvent
+	globalNewEventID++
+	s.mutex.Unlock()
 
-	if _, ok := s.events[e.ID]; ok {
-		return storage.ErrEventAlreadyExists
+	return newEvent, nil
+}
+
+func (s *MemoryStorage) UpdateEvent(ctx context.Context, event models.Event) (models.Event, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	ev, ex := s.events[event.ID]
+	if !ex {
+		return ev, storage.ErrEventNotFound
 	}
+	ev.Title = event.Title
+	ev.StartEvent = event.StartEvent
+	ev.EndEvent = event.EndEvent
+	ev.Description = event.Description
+	ev.IDUser = event.IDUser
+	ev.Notification = event.Notification
 
-	s.events[e.ID] = e
+	s.events[event.ID] = ev
+
+	return ev, nil
+}
+
+func (s *MemoryStorage) DeleteEvent(ctx context.Context, eventID int64) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	ev, ex := s.events[eventID]
+	if ex && ev.ID == eventID {
+		delete(s.events, eventID)
+		return nil
+	}
+	return storage.ErrEventNotFound
+}
+
+func (s *MemoryStorage) GetEvent(ctx context.Context, eventID int64) (models.Event, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	ev, ex := s.events[eventID]
+	if ex && ev.ID == eventID {
+		return ev, nil
+	}
+	return ev, storage.ErrEventNotFound
+}
+
+func (s *MemoryStorage) GetDayEvents(ctx context.Context, dayStart time.Time) ([]models.Event, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	var events []models.Event
+	for _, ev := range s.events {
+		if ev.StartEvent == dayStart ||
+			ev.StartEvent.UTC().After(dayStart.UTC()) && ev.StartEvent.UTC().Before(dayStart.UTC().AddDate(0, 0, 1)) {
+			events = append(events, ev)
+		}
+	}
+	return events, nil
+}
+
+func (s *MemoryStorage) GetWeekEvents(ctx context.Context, weekStart time.Time) ([]models.Event, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	events := make([]models.Event, 0)
+	for _, ev := range s.events {
+		if ev.StartEvent == weekStart ||
+			ev.StartEvent.UTC().After(weekStart.UTC()) && ev.StartEvent.UTC().Before(weekStart.UTC().AddDate(0, 0, 7)) {
+			events = append(events, ev)
+		}
+	}
+	return events, nil
+}
+
+func (s *MemoryStorage) GetMonthEvents(ctx context.Context, monthStart time.Time) ([]models.Event, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	events := make([]models.Event, 0)
+	for _, ev := range s.events {
+		if ev.StartEvent == monthStart ||
+			ev.StartEvent.UTC().After(monthStart.UTC()) && ev.StartEvent.Before(monthStart.UTC().AddDate(0, 1, 0)) {
+			events = append(events, ev)
+		}
+	}
+	return events, nil
+}
+
+func (s *MemoryStorage) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (s *Storage) Update(e storage.Event) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.events[e.ID] = e
+func (s *MemoryStorage) Close(ctx context.Context) error {
+	s.events = make(map[int64]models.Event)
 	return nil
-}
-
-func (s *Storage) Delete(id uuid.UUID) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.events[id]; !ok {
-		return storage.ErrEventDoesNotExists
-	}
-
-	delete(s.events, id)
-	return nil
-}
-
-func (s *Storage) FindAll() ([]storage.Event, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	events := make([]storage.Event, 0, len(s.events))
-	for _, event := range s.events {
-		events = append(events, event)
-	}
-
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].StartedAt.Unix() < events[j].StartedAt.Unix()
-	})
-
-	return events, nil
-}
-
-func (s *Storage) FindAtDay(day time.Time) ([]storage.Event, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	interval := day.AddDate(0, 0, 1).Sub(day)
-	var events []storage.Event
-	for _, event := range s.events {
-		diff := event.StartedAt.Sub(day)
-		if diff >= 0 && diff <= interval {
-			events = append(events, event)
-		}
-	}
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].StartedAt.Unix() < events[j].StartedAt.Unix()
-	})
-
-	return events, nil
-}
-
-func (s *Storage) FindAtWeek(dayStart time.Time) ([]storage.Event, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	interval := dayStart.AddDate(0, 0, 7).Sub(dayStart)
-	var events []storage.Event
-	for _, event := range s.events {
-		diff := event.StartedAt.Sub(dayStart)
-		if diff >= 0 && diff <= interval {
-			events = append(events, event)
-		}
-	}
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].StartedAt.Unix() < events[j].StartedAt.Unix()
-	})
-
-	return events, nil
-}
-
-func (s *Storage) FindAtMonth(dayStart time.Time) ([]storage.Event, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	interval := dayStart.AddDate(0, 1, 0).Sub(dayStart)
-	var events []storage.Event
-	for _, event := range s.events {
-		diff := event.StartedAt.Sub(dayStart)
-		if diff >= 0 && diff <= interval {
-			events = append(events, event)
-		}
-	}
-	sort.Slice(events, func(i, j int) bool {
-		return events[i].StartedAt.Unix() < events[j].StartedAt.Unix()
-	})
-
-	return events, nil
-}
-
-func (s *Storage) Find(id uuid.UUID) (*storage.Event, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if event, ok := s.events[id]; ok {
-		return &event, nil
-	}
-
-	return nil, nil
-}
-
-func (s *Storage) GetEventsReadyToNotify(dt time.Time) ([]storage.Event, error) {
-	var res []storage.Event
-
-	for _, e := range s.events {
-		if e.Notify.Sub(dt) <= 0 {
-			res = append(res, e)
-		}
-	}
-
-	sort.Slice(res, func(i, j int) bool {
-		return res[i].StartedAt.Unix() < res[j].StartedAt.Unix()
-	})
-
-	return res, nil
-}
-
-func (s *Storage) GetEventsOlderThan(dt time.Time) ([]storage.Event, error) {
-	var res []storage.Event
-
-	for _, e := range s.events {
-		if dt.Sub(e.StartedAt) >= 0 {
-			res = append(res, e)
-		}
-	}
-
-	sort.Slice(res, func(i, j int) bool {
-		return res[i].StartedAt.Unix() < res[j].StartedAt.Unix()
-	})
-
-	return res, nil
 }

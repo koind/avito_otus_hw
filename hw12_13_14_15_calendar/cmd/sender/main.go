@@ -2,43 +2,53 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os/signal"
 	"syscall"
 
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
-	internalconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
-	internallogger "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/mq"
-	transport "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/transport/log"
+	senderConfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/configs"
+	consumer "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/amqp/consumer"
 )
 
+var (
+	configFile   = flag.String("config", "../../configs/calendar_config.toml", "Path to configuration file")
+	queueName    = flag.String("queueName", "event-notification-queue", "AMQP queue name")
+	consumerName = flag.String("consumer-name", "sender-consumer", "AMQP consumer name (should not be blank)")
+)
+
+func init() {
+	flag.Parse()
+}
+
 func main() {
-	config, err := internalconfig.LoadSenderConfig()
-	if err != nil {
-		log.Fatalf("Failed to load config: %s", err)
-	}
+	log.Println("Start consuming the Queue...")
 
-	logg, err := internallogger.New(config.Logger)
-	if err != nil {
-		log.Fatalf("Failed to create logger: %s", err)
-	}
+	config, err := senderConfig.NewConfig(*configFile)
+	failOnError(err, "can't read config file")
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	sender := consumer.New(config)
+	defer sender.AMQPManager.Shutdown()
+
+	sender.SetupAMQP(*consumerName, *queueName)
+
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 
-	notificationSource, err := mq.NewRabbit(ctx, config.Rabbit.Dsn, config.Rabbit.Exchange, config.Rabbit.Queue, logg)
-	if err != nil {
-		cancel()
-		log.Fatalf("Failed to create NotificationSource (rabbit): %s", err) //nolint:gocritic
+	if err := sender.Storage.Connect(ctx); err != nil {
+		failOnError(err, "can't connect to database")
 	}
 
-	transports := []app.NotificationTransport{
-		transport.NewLogNotificationTransport(logg),
-	}
-
-	sender := app.NewNotificationSender(notificationSource, logg, transports)
-	sender.Run()
+	go sender.ProcessReceivedMessages(ctx)
 
 	<-ctx.Done()
+
+	log.Println("\nStopped consuming the Queue...")
+}
+
+func failOnError(err error, msg string) {
+	if err != nil {
+		log.Fatalf("%s: %s", msg, err)
+	}
 }

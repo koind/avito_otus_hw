@@ -2,61 +2,83 @@ package internalhttp
 
 import (
 	"context"
-	"net"
+	"fmt"
+	"log"
 	"net/http"
 
-	"github.com/gorilla/mux"
-	internalapp "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	api "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/api/protoc"
+	calendarconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/configs"
 )
 
+type Logger interface {
+	Info(msg string)
+	Error(msg string)
+}
+
 type Server struct {
-	host   string
-	port   string
-	logger internalapp.Logger
-	server *http.Server
+	httpServer *http.Server
 }
 
-func NewServer(logger internalapp.Logger, app *internalapp.App, host, port string) *Server {
-	server := &Server{
-		host:   host,
-		port:   port,
-		logger: logger,
-		server: nil,
+func RunHTTPServer(context context.Context, config calendarconfig.Config, app api.EventServiceServer, logger Logger) {
+	mux := runtime.NewServeMux()
+
+	err := api.RegisterEventServiceHandlerServer(context, mux, app)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	httpServer := &http.Server{
-		Addr:    net.JoinHostPort(host, port),
-		Handler: loggingMiddleware(NewRouter(app), logger),
+	s := &http.Server{
+		Addr:    config.HTTPServer.Host + config.HTTPServer.Port,
+		Handler: addLoggingMiddleware(logger, mux),
 	}
 
-	server.server = httpServer
+	go func() {
+		logger.Info("calendar HTTP server is running...")
+		fmt.Println("calendar HTTP server is running..")
 
-	return server
+		if err := s.ListenAndServe(); err != http.ErrServerClosed {
+			log.Fatal("Failed to listen and serve: ", err)
+		}
+	}()
+
+	<-context.Done()
+
+	if err := s.Close(); err != nil {
+		log.Fatal("failed to close http server: ", err)
+	}
+	fmt.Println("http server closed.")
 }
 
-func NewRouter(app *internalapp.App) http.Handler {
-	handlers := NewServerHandlers(app)
+func NewServer(context context.Context,
+	config calendarconfig.Config, app api.EventServiceServer, logger Logger) *Server {
+	mux := runtime.NewServeMux()
 
-	r := mux.NewRouter()
-	r.HandleFunc("/", handlers.HelloWorld).Methods("GET")
-	r.HandleFunc("/events", handlers.CreateEvent).Methods("POST")
-	r.HandleFunc("/events/{id}", handlers.UpdateEvent).Methods("PUT")
-	r.HandleFunc("/events/{id}", handlers.DeleteEvent).Methods("DELETE")
-	r.HandleFunc("/events", handlers.ListEvents).Methods("GET")
-
-	return r
-}
-
-func (s *Server) Start(ctx context.Context) error {
-	s.logger.Info("HTTP server listen and serve %s:%s", s.host, s.port)
-	if err := s.server.ListenAndServe(); err != nil {
-		return err
+	err := api.RegisterEventServiceHandlerServer(context, mux, app)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	<-ctx.Done()
-	return nil
+	s := &http.Server{
+		Addr:    config.HTTPServer.Host + config.HTTPServer.Port,
+		Handler: addLoggingMiddleware(logger, mux),
+	}
+	return &Server{
+		httpServer: s,
+	}
 }
 
-func (s *Server) Stop(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
+func (server *Server) Start(ctx context.Context) (err error) {
+	if err = server.httpServer.ListenAndServe(); err != http.ErrServerClosed {
+		log.Fatal("Failed to listen and serve: ", err)
+		return
+	}
+	return
+}
+
+func (server *Server) Stop(ctx context.Context) (err error) {
+	if err = server.httpServer.Shutdown(ctx); err != nil {
+		log.Fatal("Failed to shutdown http server: ", err)
+	}
+	return
 }

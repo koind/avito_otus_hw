@@ -1,165 +1,146 @@
 package memorystorage
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	memorystorage "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage"
+	models "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/models"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/util"
 	"github.com/stretchr/testify/require"
 )
 
-func TestStorage(t *testing.T) { //nolint:funlen,gocognit,nolintlint
-	storage := New()
-
-	t.Run("common test", func(t *testing.T) {
-		userID := uuid.New()
-		startedAt, err := time.Parse("2006-01-02 15:04:05", "2022-03-08 12:00:00")
-		if err != nil {
-			t.FailNow()
-			return
-		}
-		finishedAt, err := time.Parse("2006-01-02 15:04:05", "2022-03-09 12:00:00")
-		if err != nil {
-			t.FailNow()
-			return
-		}
-		notifyAt, err := time.Parse("2006-01-02 15:04:05", "2022-03-07 12:00:00")
-		if err != nil {
-			t.FailNow()
-			return
-		}
-
-		event := memorystorage.NewEvent(
-			"Event title",
-			startedAt,
-			finishedAt,
-			"Event description",
-			userID,
-			notifyAt,
-		)
-
-		err = storage.Create(*event)
-		if err != nil {
-			t.FailNow()
-			return
-		}
-
-		saved, err := storage.FindAll()
-		if err != nil {
-			t.FailNow()
-			return
-		}
-		require.Len(t, saved, 1)
-		require.Equal(t, *event, saved[0])
-
-		event.Title = "New event title"
-		event.Description = "New event description"
-
-		saved, err = storage.FindAll()
-		if err != nil {
-			t.FailNow()
-			return
-		}
-		require.Len(t, saved, 1)
-		require.NotEqual(t, *event, saved[0])
-		require.NotEqual(t, event.Title, saved[0].Title)
-		require.NotEqual(t, event.Description, saved[0].Description)
-
-		err = storage.Update(*event)
-		if err != nil {
-			t.FailNow()
-			return
-		}
-
-		saved, err = storage.FindAll()
-		if err != nil {
-			t.FailNow()
-			return
-		}
-		require.Len(t, saved, 1)
-		require.Equal(t, *event, saved[0])
-		require.Equal(t, event.Title, saved[0].Title)
-		require.Equal(t, event.Description, saved[0].Description)
-
-		err = storage.Delete(event.ID)
-		if err != nil {
-			t.FailNow()
-			return
-		}
-
-		saved, err = storage.FindAll()
-		if err != nil {
-			t.FailNow()
-			return
-		}
-		require.Len(t, saved, 0)
-	})
-
-	t.Run("test notify list", func(t *testing.T) {
-		events := []memorystorage.Event{
-			{
-				ID:        parseUUID(t, "4927aa58-a175-429a-a125-c04765597150"),
-				StartedAt: parseDate(t, "2022-04-03T11:59:59Z"),
-				Notify:    parseDate(t, "2022-04-03T11:59:59Z"),
-			},
-			{
-				ID:        parseUUID(t, "4927aa58-a175-429a-a125-c04765597151"),
-				StartedAt: parseDate(t, "2022-04-03T12:00:00Z"),
-				Notify:    parseDate(t, "2022-04-03T12:00:00Z"),
-			},
-			{
-				ID:        parseUUID(t, "4927aa58-a175-429a-a125-c04765597152"),
-				StartedAt: parseDate(t, "2022-04-04T12:00:00Z"),
-				Notify:    parseDate(t, "2022-04-03T12:00:00Z"),
-			},
-			{
-				ID:        parseUUID(t, "4927aa58-a175-429a-a125-c04765597153"),
-				StartedAt: parseDate(t, "2022-04-05T12:00:01Z"),
-				Notify:    parseDate(t, "2022-04-04T11:59:01Z"),
-			},
-		}
-
-		for _, e := range events {
-			_ = storage.Create(e)
-		}
-
-		readyEvents, err := storage.GetEventsReadyToNotify(parseDate(t, "2022-04-03T12:00:00Z"))
-		require.Nil(t, err)
-
-		ids := extractEventIDs(readyEvents)
-		idsExpected := []string{
-			"4927aa58-a175-429a-a125-c04765597150",
-			"4927aa58-a175-429a-a125-c04765597151",
-			"4927aa58-a175-429a-a125-c04765597152",
-		}
-		require.Equal(t, idsExpected, ids)
-	})
-}
-
-func parseUUID(t *testing.T, str string) uuid.UUID {
+func createRandomEvent(t *testing.T) models.Event {
 	t.Helper()
-	id, err := uuid.Parse(str)
-	if err != nil {
-		t.Errorf("failed to parse UUID: %s", err)
+	event := models.Event{
+		Title:       util.RandomTitle(),
+		StartEvent:  time.Now().UTC(),
+		EndEvent:    time.Now().AddDate(0, 0, util.RandomInt(100)).UTC(),
+		Description: util.RandomDescription(),
+		IDUser:      util.RandomUserID(),
 	}
-	return id
+
+	ev, err := memoryStorage.CreateEvent(context.Background(), event)
+	require.NoError(t, err)
+	require.NotEmpty(t, ev)
+
+	return ev
 }
 
-func parseDate(t *testing.T, str string) time.Time {
-	t.Helper()
-	dt, err := time.Parse(time.RFC3339, str)
-	if err != nil {
-		t.Errorf("failed to parse date: %s", err)
-	}
-	return dt
+func TestCreateEvent(t *testing.T) {
+	createRandomEvent(t)
 }
 
-func extractEventIDs(events []memorystorage.Event) []string {
-	res := make([]string, 0, len(events))
-	for _, e := range events {
-		res = append(res, e.ID.String())
+func TestGetEvent(t *testing.T) {
+	newEvent := createRandomEvent(t)
+	eventID := newEvent.ID
+
+	event, err := memoryStorage.GetEvent(context.Background(), eventID)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, event)
+	require.Equal(t, eventID, event.ID)
+	require.Equal(t, newEvent.Title, event.Title)
+	require.Equal(t, newEvent.StartEvent, event.StartEvent)
+	require.Equal(t, newEvent.EndEvent, event.EndEvent)
+	require.Equal(t, newEvent.Description, event.Description)
+	require.Equal(t, newEvent.IDUser, event.IDUser)
+	require.Equal(t, newEvent.Notification, event.Notification)
+}
+
+func TestDeleteEvent(t *testing.T) {
+	newEvent := createRandomEvent(t)
+	eventID := newEvent.ID
+
+	err := memoryStorage.DeleteEvent(context.Background(), eventID)
+
+	require.NoError(t, err)
+
+	notExistEvent, err := memoryStorage.GetEvent(context.Background(), eventID)
+
+	require.Error(t, err)
+	require.EqualError(t, err, storage.ErrEventNotFound.Error())
+	require.Empty(t, notExistEvent)
+}
+
+func TestUpdateEvent(t *testing.T) {
+	event := models.Event{
+		ID:          1,
+		Title:       util.RandomTitle() + "_test",
+		StartEvent:  time.Now().UTC(),
+		EndEvent:    time.Now().AddDate(0, 0, util.RandomInt(100)).UTC(),
+		Description: util.RandomDescription(),
+		IDUser:      util.RandomUserID(),
 	}
 
-	return res
+	updatedEvent, err := memoryStorage.UpdateEvent(context.Background(), event)
+	require.NoError(t, err)
+
+	require.Equal(t, event.Title, updatedEvent.Title)
+	require.Equal(t, event.StartEvent, updatedEvent.StartEvent)
+	require.Equal(t, event.EndEvent, updatedEvent.EndEvent)
+	require.Equal(t, event.Description, updatedEvent.Description)
+	require.Equal(t, event.IDUser, updatedEvent.IDUser)
+	require.Equal(t, event.Notification, updatedEvent.Notification)
+}
+
+func TestGetWeekEvents(t *testing.T) {
+	var lastEvent models.Event
+	for i := 0; i < 20; i++ {
+		lastEvent = createRandomEvent(t)
+	}
+
+	events, err := memoryStorage.GetWeekEvents(context.Background(), lastEvent.StartEvent)
+	require.NoError(t, err)
+	require.NotEmpty(t, events)
+
+	week := time.Hour * 168
+	var date time.Time
+	for i := 0; i < len(events); i++ {
+		date = events[i].StartEvent
+
+		require.WithinDuration(t,
+			lastEvent.StartEvent.UTC(),
+			date.UTC(),
+			week)
+	}
+}
+
+func TestGetMonthEvents(t *testing.T) {
+	var lastEvent models.Event
+	for i := 0; i < 20; i++ {
+		lastEvent = createRandomEvent(t)
+	}
+
+	events, err := memoryStorage.GetMonthEvents(context.Background(), lastEvent.StartEvent)
+	require.NoError(t, err)
+	require.NotEmpty(t, events)
+
+	month := time.Hour * 730
+	var date time.Time
+	for i := 0; i < len(events); i++ {
+		date = events[i].StartEvent
+
+		require.WithinDuration(t,
+			lastEvent.StartEvent.UTC(),
+			date.UTC(),
+			month)
+	}
+}
+
+func TestDataRaceOnCRUD(t *testing.T) {
+	for i := 0; i < 30; i++ {
+		event := models.Event{
+			Title:       util.RandomTitle(),
+			StartEvent:  time.Now().UTC(),
+			EndEvent:    time.Now().AddDate(0, 0, util.RandomInt(100)).UTC(),
+			Description: util.RandomDescription(),
+			IDUser:      util.RandomUserID(),
+		}
+		go memoryStorage.CreateEvent(context.Background(), event)
+		go memoryStorage.UpdateEvent(context.Background(), event)
+		go memoryStorage.DeleteEvent(context.Background(), event.ID)
+		go memoryStorage.GetEvent(context.Background(), event.ID)
+	}
 }

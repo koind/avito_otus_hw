@@ -1,83 +1,63 @@
 package logger
 
 import (
-	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"time"
 
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
-	"github.com/sirupsen/logrus"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
+var pathToLogFile string
+
 type Logger struct {
-	logger *logrus.Logger
+	ZapLogger *zap.Logger
 }
 
-func New(loggerConfig config.LoggerConf) (*Logger, error) {
-	logger := logrus.New()
+func New(logFile, level string) *Logger {
+	pathToLogFile = logFile
+	writeSyncer := getLogWriter()
+	encoder := getEncoder()
+	core := zapcore.NewCore(encoder, writeSyncer, getLogLevel(level))
 
-	loggerOutput, err := parseLogFile(loggerConfig.Filename)
-	if err != nil {
-		return nil, fmt.Errorf("invalid log file name: %w", err)
-	}
-	logger.SetOutput(loggerOutput)
-
-	loggerLevel, err := logrus.ParseLevel(string(loggerConfig.Level))
-	if err != nil {
-		return nil, err
-	}
-	logger.SetLevel(loggerLevel)
-
-	logger.SetFormatter(&logrus.JSONFormatter{})
+	logger := zap.New(core)
 
 	return &Logger{
-		logger,
-	}, nil
+		ZapLogger: logger,
+	}
 }
 
-func (l *Logger) Debug(message string, params ...interface{}) {
-	l.logger.Debugf(message, params...)
+func (l Logger) Info(msg string) {
+	l.ZapLogger.Info(msg)
 }
 
-func (l *Logger) Info(message string, params ...interface{}) {
-	l.logger.Infof(message, params...)
+func (l Logger) Error(msg string) {
+	l.ZapLogger.Error(msg)
 }
 
-func (l *Logger) Warn(message string, params ...interface{}) {
-	l.logger.Warnf(message, params...)
+func getEncoder() zapcore.Encoder {
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+	return zapcore.NewConsoleEncoder(encoderConfig)
 }
 
-func (l *Logger) Error(message string, params ...interface{}) {
-	l.logger.Errorf(message, params...)
+func getLogWriter() zapcore.WriteSyncer {
+	file, err := os.OpenFile(pathToLogFile, os.O_CREATE|os.O_RDWR, 0o666)
+	if err != nil {
+		panic("can't create logger: " + err.Error())
+	}
+	return zapcore.AddSync(file)
 }
 
-func (l *Logger) LogHTTPRequest(r *http.Request, code, length int) {
-	l.logger.Infof(
-		"%s [%s] %s %s %s %d %d %q",
-		r.RemoteAddr,
-		time.Now().Format("02/Jan/2006:15:04:05 MST"),
-		r.Method,
-		r.RequestURI,
-		r.Proto,
-		code,
-		length,
-		r.UserAgent(),
-	)
-}
-
-func parseLogFile(filename string) (io.Writer, error) {
-	switch filename {
-	case "stderr":
-		return os.Stderr, nil
-	case "stdout":
-		return os.Stdout, nil
+func getLogLevel(l string) zapcore.Level {
+	switch l {
+	case "INFO":
+		return zapcore.InfoLevel
+	case "DEBUG":
+		return zapcore.DebugLevel
+	case "ERROR":
+		return zapcore.ErrorLevel
 	default:
-		file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
-		if err != nil {
-			return nil, err
-		}
-		return file, nil
+		return zapcore.InfoLevel
 	}
 }

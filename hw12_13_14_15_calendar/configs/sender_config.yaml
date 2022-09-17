@@ -1,9 +1,0 @@
-logger:
-  level: "info"
-  filename: "stderr"
-  storage:
-    type: "in-memory"
-  rabbit:
-    dsn: "amqp://guest:guest@localhost:5672"
-    exchange: "calendar_notifications"
-    queue: "calendar_notifications"

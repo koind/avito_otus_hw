@@ -6,15 +6,21 @@ import (
 	"log"
 	"os/signal"
 	"syscall"
-	"time"
 
-	internalapp "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
-	internalconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/config"
-	internallogger "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
+	calendarconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/configs"
+	app "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
 	internalgrpc "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/grpc"
 	internalhttp "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/http"
-	internalstore "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/production"
+	sqlstorage "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/sql"
 )
+
+var configFile, logFile string
+
+func init() {
+	flag.StringVar(&configFile, "config", "../../configs/calendar_config.toml", "Path to configuration file")
+	flag.StringVar(&logFile, "log", "../../log/logs.log", "Path to log file")
+}
 
 func main() {
 	flag.Parse()
@@ -24,61 +30,36 @@ func main() {
 		return
 	}
 
-	config, err := internalconfig.LoadConfig()
+	config, err := calendarconfig.NewConfig(configFile)
 	if err != nil {
-		log.Fatalf("Failed to load config: %s", err)
+		log.Println("can't read config file: " + err.Error())
+		return
 	}
 
-	logg, err := internallogger.New(config.Logger)
-	if err != nil {
-		log.Fatalf("Failed to create logger: %s", err)
-	}
+	zapLogg := logger.New(logFile, config.Logger.Level)
+	defer zapLogg.ZapLogger.Sync()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 
-	storage, err := internalstore.CreateStorage(ctx, config.Storage)
-	if err != nil {
-		cancel()
-		log.Fatalf("Failed to create storage: %s", err) //nolint:gocritic
+	storage := sqlstorage.New(config)
+	if err := storage.Connect(ctx); err != nil {
+		zapLogg.Info("connection to database failed: " + err.Error())
+		return
 	}
+	zapLogg.Info("Successfully connected to database...")
+	defer storage.Close(ctx)
 
-	calendar := internalapp.New(logg, storage)
+	calendar := app.New(zapLogg, storage)
 
-	serverGrpc := internalgrpc.NewServer(logg, calendar, config.GRPC.Host, config.GRPC.Port)
+	go internalgrpc.RunGRPCServer(ctx, config, calendar, zapLogg)
 
-	go func() {
-		if err := serverGrpc.Start(); err != nil {
-			logg.Error("failed to start grpc server: " + err.Error())
-		}
-	}()
+	go internalhttp.RunHTTPServer(ctx, config, calendar, zapLogg)
 
-	go func() {
-		<-ctx.Done()
-		serverGrpc.Stop()
-	}()
-
-	serverHttp := internalhttp.NewServer(logg, calendar, config.HTTP.Host, config.HTTP.Port)
-
-	go func() {
-		if err := serverHttp.Start(ctx); err != nil {
-			logg.Error("failed to start server: " + err.Error())
-			cancel()
-		}
-	}()
-
-	go func() {
-		<-ctx.Done()
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
-		defer cancel()
-
-		if err := serverHttp.Stop(ctx); err != nil {
-			logg.Error("failed to stop http server: " + err.Error())
-		}
-	}()
-
-	logg.Info("calendar is running...")
+	log.Println("Calendar service started")
 
 	<-ctx.Done()
+
+	zapLogg.Info("\nAll servers are stopped...")
 }

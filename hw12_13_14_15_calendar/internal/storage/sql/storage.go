@@ -2,330 +2,136 @@ package sqlstorage
 
 import (
 	"context"
-	"errors"
+	"database/sql"
 	"fmt"
-	"os"
 	"time"
 
-	"github.com/google/uuid"
-	pgx "github.com/jackc/pgx/v4"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/app"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage"
+	calendarconfig "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/configs"
+	sqlc "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/sql/sqlc"
+	domainModels "github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/models"
+
+	_ "github.com/lib/pq" //nolint
 )
 
 type Storage struct {
-	ctx  context.Context
-	conn *pgx.Conn
-	dsn  string
+	db        *sql.DB
+	DBQueries *sqlc.Queries
+
+	Driver string
+	Source string
 }
 
-func New(ctx context.Context, dsn string) *Storage {
+func New(c calendarconfig.Config) *Storage {
 	return &Storage{
-		ctx: ctx,
-		dsn: dsn,
+		Driver: c.Storage.Driver,
+		Source: c.Storage.Source,
 	}
 }
 
-func (s *Storage) Connect(ctx context.Context) (app.Storage, error) {
-	conn, err := pgx.Connect(ctx, s.dsn)
+func (s *Storage) Connect(ctx context.Context) error {
+	db, err := sql.Open(s.Driver, s.Source)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect database: %v\n", err)
-		return nil, err
+		return fmt.Errorf("cannot open pgx driver: %w", err)
 	}
-	s.conn = conn
-	return s, nil
+
+	s.db = db
+	connErr := s.db.PingContext(ctx)
+	if connErr != nil {
+		return connErr
+	}
+
+	s.DBQueries = sqlc.New(db)
+
+	return nil
 }
 
 func (s *Storage) Close(ctx context.Context) error {
-	return s.conn.Close(ctx)
+	return s.db.Close()
 }
 
-func (s *Storage) Create(e storage.Event) error {
-	sql := `insert into events (id, title, started_at, finished_at, description, user_id, notify) 
-			values ($1, $2, $3, $4, $5, $6, $7)
-			`
-	_, err := s.conn.Exec(
-		s.ctx,
-		sql,
-		e.ID.String(),
-		e.Title,
-		e.StartedAt.Format(time.RFC3339),
-		e.FinishedAt.Format(time.RFC3339),
-		e.Description,
-		e.UserID,
-		e.Notify.Format(time.RFC3339),
-	)
-
-	return err
-}
-
-func (s *Storage) Update(e storage.Event) error {
-	sql := `update events 
-			set
-    		title = $2,
-    		started_at = $3,
-    		finished_at = $4,
-    		description = $5,
-    		user_id = $6,
-    		notify = $7
-			where
-			id = $1
-			`
-	_, err := s.conn.Exec(
-		s.ctx,
-		sql,
-		e.ID.String(),
-		e.Title,
-		e.StartedAt.Format(time.RFC3339),
-		e.FinishedAt.Format(time.RFC3339),
-		e.Description,
-		e.UserID,
-		e.Notify.Format(time.RFC3339),
-	)
-
-	return err
-}
-
-func (s *Storage) Delete(id uuid.UUID) error {
-	sql := `DELETE FROM events WHERE id = $1`
-	_, err := s.conn.Exec(s.ctx, sql, id)
-
-	return err
-}
-
-func (s *Storage) Find(id uuid.UUID) (*storage.Event, error) {
-	var e storage.Event
-
-	sql := `select id, title, started_at, finished_at, description, user_id, notify
-			from events
-			where id = $1
-			`
-	err := s.conn.QueryRow(s.ctx, sql, id).Scan(
-		&e.ID,
-		&e.Title,
-		&e.StartedAt,
-		&e.FinishedAt,
-		&e.Description,
-		&e.UserID,
-		&e.Notify,
-	)
-
-	if err == nil {
-		return &e, nil
-	}
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, storage.ErrorEventNotFound
+func (s *Storage) CreateEvent(ctx context.Context, event domainModels.Event) (domainModels.Event, error) {
+	createEvent := sqlc.CreateEventParams{
+		Title:        event.Title,
+		StartEvent:   event.StartEvent,
+		EndEvent:     event.EndEvent,
+		Description:  sql.NullString{String: event.Description, Valid: true},
+		IDUser:       event.IDUser,
+		Notification: sql.NullTime{Time: event.Notification, Valid: true},
 	}
 
-	return nil, fmt.Errorf("failed to scan SQL result into struct: %w", err)
+	createdModel, err := s.DBQueries.CreateEvent(ctx, createEvent)
+
+	return toViewModel(createdModel), err
 }
 
-func (s *Storage) FindAll() ([]storage.Event, error) {
-	var events []storage.Event
+func (s *Storage) UpdateEvent(ctx context.Context, event domainModels.Event) (domainModels.Event, error) {
+	updateEvent := sqlc.UpdateEventParams{
+		ID:           event.ID,
+		Title:        event.Title,
+		StartEvent:   event.StartEvent,
+		EndEvent:     event.EndEvent,
+		Description:  sql.NullString{String: event.Description, Valid: true},
+		IDUser:       event.IDUser,
+		Notification: sql.NullTime{Time: event.Notification, Valid: true},
+	}
 
-	sql := `select id, title, started_at, finished_at, description, user_id, notify 
-			from events
-			order by date
-			`
-	rows, err := s.conn.Query(s.ctx, sql)
+	updatedEvent, err := s.DBQueries.UpdateEvent(ctx, updateEvent)
+
+	return toViewModel(updatedEvent), err
+}
+
+func (s *Storage) DeleteEvent(ctx context.Context, id int64) error {
+	return s.DBQueries.DeleteEvent(ctx, id)
+}
+
+func (s *Storage) GetEvent(ctx context.Context, id int64) (eventModel domainModels.Event, err error) {
+	event, err := s.DBQueries.GetEvent(ctx, id)
 	if err != nil {
-		return nil, err
+		return eventModel, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var e storage.Event
-		if err := rows.Scan(
-			&e.ID,
-			&e.Title,
-			&e.StartedAt,
-			&e.FinishedAt,
-			&e.Description,
-			&e.UserID,
-			&e.Notify,
-		); err != nil {
-			return nil, fmt.Errorf("unable to transform array result into struct: %w", err)
-		}
-
-		events = append(events, e)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return events, nil
+	return toViewModel(event), err
 }
 
-func (s *Storage) FindAtDay(day time.Time) ([]storage.Event, error) { //nolint:dupl
-	var events []storage.Event
-
-	from := day.AddDate(0, 0, 1).Format(time.RFC3339)
-	to := day.AddDate(0, 0, 1).Format(time.RFC3339)
-
-	rows, err := s.findAtDate(from, to)
+func (s *Storage) GetDayEvents(ctx context.Context, day time.Time) (eventModels []domainModels.Event, err error) {
+	events, err := s.DBQueries.GetDayEvents(ctx, day)
 	if err != nil {
-		return nil, err
+		return eventModels, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var e storage.Event
-		if err := rows.Scan(
-			&e.ID,
-			&e.Title,
-			&e.StartedAt,
-			&e.FinishedAt,
-			&e.Description,
-			&e.UserID,
-			&e.Notify,
-		); err != nil {
-			return nil, fmt.Errorf("unable to transform array result into struct: %w", err)
-		}
-
-		events = append(events, e)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return events, nil
+	return toViewModels(events), err
 }
 
-func (s *Storage) FindAtWeek(dayStart time.Time) ([]storage.Event, error) { //nolint:dupl
-	var events []storage.Event
-
-	from := dayStart.AddDate(0, 0, 7).Format(time.RFC3339)
-	to := dayStart.AddDate(0, 0, 7).Format(time.RFC3339)
-
-	rows, err := s.findAtDate(from, to)
+func (s Storage) GetWeekEvents(ctx context.Context, weekStart time.Time) (eventModels []domainModels.Event, err error) {
+	events, err := s.DBQueries.GetWeekEvents(ctx, weekStart)
 	if err != nil {
-		return nil, err
+		return eventModels, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var e storage.Event
-		if err := rows.Scan(
-			&e.ID,
-			&e.Title,
-			&e.StartedAt,
-			&e.FinishedAt,
-			&e.Description,
-			&e.UserID,
-			&e.Notify,
-		); err != nil {
-			return nil, fmt.Errorf("unable to transform array result into struct: %w", err)
-		}
-
-		events = append(events, e)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return events, nil
+	return toViewModels(events), err
 }
 
-func (s *Storage) FindAtMonth(dayStart time.Time) ([]storage.Event, error) { //nolint:dupl
-	var events []storage.Event
-
-	from := dayStart.AddDate(0, 1, 0).Format(time.RFC3339)
-	to := dayStart.AddDate(0, 1, 0).Format(time.RFC3339)
-
-	rows, err := s.findAtDate(from, to)
+func (s Storage) GetMonthEvents(ctx context.Context, monthStart time.Time) (evModels []domainModels.Event, err error) {
+	events, err := s.DBQueries.GetMonthEvents(ctx, monthStart)
 	if err != nil {
-		return nil, err
+		return evModels, err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var e storage.Event
-		if err := rows.Scan(
-			&e.ID,
-			&e.Title,
-			&e.StartedAt,
-			&e.FinishedAt,
-			&e.Description,
-			&e.UserID,
-			&e.Notify,
-		); err != nil {
-			return nil, fmt.Errorf("unable to transform array result into struct: %w", err)
-		}
-
-		events = append(events, e)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return events, nil
+	return toViewModels(events), err
 }
 
-func (s *Storage) findAtDate(from, to string) (pgx.Rows, error) {
-	const searchSQL = `select id, title, started_at, finished_at, description, user_id, notify 
-						from events
-						where started_at >= $1 and started_at <= $2
-						order by date
-						`
-	return s.conn.Query(s.ctx, searchSQL, from, to)
+func toViewModel(ev sqlc.Event) domainModels.Event {
+	return domainModels.Event{
+		ID:           ev.ID,
+		Title:        ev.Title,
+		StartEvent:   ev.StartEvent,
+		EndEvent:     ev.EndEvent,
+		Description:  ev.Description.String,
+		IDUser:       ev.IDUser,
+		Notification: ev.Notification.Time,
+	}
 }
 
-func (s *Storage) GetEventsReadyToNotify(dt time.Time) ([]storage.Event, error) {
-	sql := `
- select id, title, started_at, finished_at, description, user_id, notify 
- from events 
- where notify <= $1
- `
-	rows, err := s.conn.Query(s.ctx, sql, dt.Format(time.RFC3339))
-	if err != nil {
-		return nil, err
+func toViewModels(events []sqlc.Event) []domainModels.Event {
+	result := make([]domainModels.Event, len(events))
+	for i, event := range events { //nolint
+		result[i] = toViewModel(event)
 	}
-	defer rows.Close()
-
-	return createEventsFromRows(rows)
-}
-
-func (s *Storage) GetEventsOlderThan(dt time.Time) ([]storage.Event, error) {
-	sql := `
- select id, title, started_at, finished_at, description, user_id, notify 
- from events 
- where started_at <= $1
- `
-	rows, err := s.conn.Query(s.ctx, sql, dt.Format(time.RFC3339))
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	return createEventsFromRows(rows)
-}
-
-func createEventsFromRows(rows pgx.Rows) ([]storage.Event, error) {
-	var events []storage.Event
-
-	for rows.Next() {
-		var e storage.Event
-		if err := rows.Scan(
-			&e.ID,
-			&e.Title,
-			&e.StartedAt,
-			&e.FinishedAt,
-			&e.Description,
-			&e.UserID,
-			&e.Notify,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan SQL result into struct: %w", err)
-		}
-
-		events = append(events, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return events, nil
+	return result
 }
