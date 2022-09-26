@@ -67,5 +67,7 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) Stop(ctx context.Context) error {
+	s.logger.Info("HTTP server stopped")
+
 	return s.server.Shutdown(ctx)
 }

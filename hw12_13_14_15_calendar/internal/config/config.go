@@ -7,11 +7,23 @@ import (
 	yaml3 "gopkg.in/yaml.v3"
 )
 
-type Config struct {
+type CalendarConf struct {
 	Logger  LoggerConf
 	Storage StorageConf
 	HTTP    HTTPConf
 	GRPC    GRPCConf
+}
+
+type SchedulerConf struct {
+	Logger  LoggerConf
+	Storage StorageConf
+	Rabbit  RabbitConf
+}
+
+type SenderConf struct {
+	Logger  LoggerConf
+	Storage StorageConf
+	Rabbit  RabbitConf
 }
 
 type HTTPConf struct {
@@ -34,21 +46,53 @@ type StorageConf struct {
 	Dsn  string
 }
 
-func NewConfig() Config {
-	return Config{}
+type RabbitConf struct {
+	Dsn      string
+	Exchange string
+	Queue    string
 }
 
-func Load(configFile string) (*Config, error) {
+func LoadCalendar(configFile string) (*CalendarConf, error) {
 	content, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("wrong configuration file %s: %w", configFile, err)
 	}
 
-	newConfig := NewConfig()
-	err = yaml3.Unmarshal(content, &newConfig)
+	newConfig := new(CalendarConf)
+	err = yaml3.Unmarshal(content, newConfig)
 	if err != nil {
-		return nil, fmt.Errorf("wrong params in configuration file  %s: %w", configFile, err)
+		return nil, fmt.Errorf("wrong params in configuration file %s: %w", configFile, err)
 	}
 
-	return &newConfig, nil
+	return newConfig, nil
+}
+
+func LoadScheduler(configFile string) (*SchedulerConf, error) {
+	content, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("wrong configuration file %s: %w", configFile, err)
+	}
+
+	newConfig := new(SchedulerConf)
+	err = yaml3.Unmarshal(content, newConfig)
+	if err != nil {
+		return nil, fmt.Errorf("wrong params in configuration file %s: %w", configFile, err)
+	}
+
+	return newConfig, nil
+}
+
+func LoadSender(configFile string) (*SenderConf, error) {
+	content, err := os.ReadFile(configFile)
+	if err != nil {
+		return nil, fmt.Errorf("wrong configuration file %s: %w", configFile, err)
+	}
+
+	newConfig := new(SenderConf)
+	err = yaml3.Unmarshal(content, newConfig)
+	if err != nil {
+		return nil, fmt.Errorf("wrong params in configuration file %s: %w", configFile, err)
+	}
+
+	return newConfig, nil
 }

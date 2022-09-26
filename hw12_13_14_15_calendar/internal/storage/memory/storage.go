@@ -2,6 +2,7 @@ package memory
 
 import (
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/domain/entity"
@@ -65,4 +66,28 @@ func (s *Storage) SelectOne(id uuid.UUID) (*entity.Event, error) {
 	}
 
 	return &event, nil
+}
+
+func (s *Storage) GetActualNotifyEvents(notifyTime time.Time) ([]entity.Event, error) {
+	res := make([]entity.Event, 0)
+
+	for _, e := range s.events {
+		if e.NotifyAt.Sub(notifyTime) == 0 {
+			res = append(res, e)
+		}
+	}
+
+	return res, nil
+}
+
+func (s *Storage) GetOldEvents(timeBefore time.Time) ([]entity.Event, error) {
+	res := make([]entity.Event, 0)
+
+	for _, e := range s.events {
+		if timeBefore.Sub(e.StartedAt) >= 0 {
+			res = append(res, e)
+		}
+	}
+
+	return res, nil
 }

@@ -16,8 +16,7 @@ import (
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/logger"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/grpcs"
 	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/server/https"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/memory"
-	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage/postgres"
+	"github.com/koind/avito_otus_hw/hw12_13_14_15_calendar/internal/storage"
 )
 
 var (
@@ -29,7 +28,7 @@ var (
 var configFile string
 
 func init() {
-	flag.StringVar(&configFile, "config", "configs/config.yaml", "Path to configuration file")
+	flag.StringVar(&configFile, "config", "configs/calendar_config.yaml", "Path to configuration file")
 }
 
 func main() {
@@ -40,7 +39,7 @@ func main() {
 		return
 	}
 
-	cfg, err := config.Load(configFile)
+	cfg, err := config.LoadCalendar(configFile)
 	if err != nil {
 		log.Fatalf("Error read configuration: %s", err)
 	}
@@ -54,8 +53,7 @@ func main() {
 		syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	defer cancel()
 
-	storage := NewStorage(ctx, *cfg)
-	calendar := app.New(logg, storage)
+	calendar := app.New(logg, storage.New(ctx, cfg.Storage))
 
 	// gRPC
 	serverGrpc := grpcs.NewServer(logg, calendar, cfg.GRPC.Host, cfg.GRPC.Port)
@@ -92,21 +90,6 @@ func main() {
 		cancel()
 		os.Exit(1) //nolint:gocritic
 	}
-}
-
-func NewStorage(ctx context.Context, cfg config.Config) app.Storage {
-	var storage app.Storage
-
-	switch cfg.Storage.Type {
-	case "memory":
-		storage = memory.New()
-	case "postgres":
-		storage = postgres.New(ctx, cfg.Storage.Dsn).Connect(ctx)
-	default:
-		log.Fatalln("Unknown type of storage: " + cfg.Storage.Type)
-	}
-
-	return storage
 }
 
 func printVersion() {
