@@ -113,13 +113,13 @@ func (s *EventHandler) List(w http.ResponseWriter, r *http.Request) {
 	if withDate {
 		switch interval {
 		case "day":
-			events, err = s.app.GetDayEvents(r.Context(), dtStart)
+			events, err = s.app.GetDayEvents(r.Context(), dtStart.UTC())
 		case "week":
-			events, err = s.app.GetWeekEvents(r.Context(), dtStart)
+			events, err = s.app.GetWeekEvents(r.Context(), dtStart.UTC())
 		case "month":
-			events, err = s.app.GetMonthEvents(r.Context(), dtStart)
+			events, err = s.app.GetMonthEvents(r.Context(), dtStart.UTC())
 		default:
-			events, err = s.app.GetDayEvents(r.Context(), dtStart)
+			events, err = s.app.GetDayEvents(r.Context(), dtStart.UTC())
 		}
 	} else {
 		events, err = s.app.GetEvents(r.Context())

@@ -49,7 +49,7 @@ func (d *EventForm) ToEntity() (*entity.Event, error) {
 		return nil, fmt.Errorf("notifyAt format must be 'yyyy-mm-dd hh:mm:ss', your value: %s, %w", d.NotifyAt, err)
 	}
 
-	event := entity.NewEvent(userID, d.Title, startedAt, finishedAt, d.Description, notifyAt)
+	event := entity.NewEvent(userID, d.Title, startedAt.UTC(), finishedAt.UTC(), d.Description, notifyAt.UTC())
 	event.ID = id
 
 	return event, nil
